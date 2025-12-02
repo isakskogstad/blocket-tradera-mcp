@@ -27,10 +27,10 @@
   "installations": {
     "npm": {
       "type": "npm",
-      "package": "@isakskogstad/blocket-tradera-mcp",
+      "package": "blocket-tradera-mcp",
       "command": {
         "name": "npx",
-        "args": ["-y", "@isakskogstad/blocket-tradera-mcp"]
+        "args": ["-y", "blocket-tradera-mcp"]
       }
     },
     "remote": {

@@ -1,5 +1,5 @@
 {
-  "name": "@isakskogstad/blocket-tradera-mcp",
+  "name": "blocket-tradera-mcp",
   "version": "1.0.0",
   "description": "MCP server for Swedish marketplaces Blocket and Tradera - search, compare prices, and browse listings",
   "mcpName": "io.github.isakskogstad/blocket-tradera",

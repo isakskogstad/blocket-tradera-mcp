@@ -23,7 +23,7 @@ Lägg till i din `claude_desktop_config.json`:
   "mcpServers": {
     "blocket-tradera": {
       "command": "npx",
-      "args": ["-y", "@isakskogstad/blocket-tradera-mcp"]
+      "args": ["-y", "blocket-tradera-mcp"]
     }
   }
 }

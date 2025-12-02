@@ -1,11 +1,24 @@
+# Blocket & Tradera MCP Server - Render Configuration
+#
+# ⚠️ KRITISKT: Om du skapar service manuellt i Render Dashboard,
+# MÅSTE du ange EXAKT dessa kommandon:
+#   - Build Command: npm ci && npm run build
+#   - Start Command: npm run start:http
+#
+# VANLIGT FEL: Render auto-detekterar "npm start" från package.json main,
+# men det är FEL för HTTP-servrar!
+
 services:
   - type: web
     name: blocket-tradera-mcp
     runtime: node
     region: frankfurt
     plan: free
-    buildCommand: npm ci && npm run build
-    startCommand: npm run start:http
+
+    # ⚠️ KRITISKT: Båda dessa måste vara korrekta!
+    buildCommand: npm ci && npm run build  # Kompilerar TypeScript
+    startCommand: npm run start:http       # HTTP-server (INTE npm start!)
+
     healthCheckPath: /health
     envVars:
       - key: NODE_ENV

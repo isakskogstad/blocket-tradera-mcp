@@ -20,6 +20,7 @@ import {
   BlocketLocations,
   BlocketCategories,
 } from '../types/blocket.js';
+import { matchesMunicipality } from '../utils/municipalities.js';
 import type {
   BlocketSearchParams,
   BlocketCarSearchParams,
@@ -29,6 +30,7 @@ import type {
   BlocketAdDetails,
   BlocketLocation,
   BlocketCategory,
+  BlocketListing,
 } from '../types/blocket.js';
 import type { UnifiedListing } from '../types/unified.js';
 
@@ -372,6 +374,15 @@ export class BlocketClient {
       });
 
       if (!response.ok) {
+        if (response.status === 422) {
+          const errorBody = await response.json().catch(() => ({}));
+          console.error(`[BlocketClient] 422 error for ad ${adId}:`, errorBody);
+          throw new Error(
+            `Validation error (422) - listing ID may be invalid or ad type mismatch. ` +
+            `Try different ad_type (RECOMMERCE/CAR/BOAT/MC) or verify ID from search results. ` +
+            `Details: ${JSON.stringify(errorBody)}`
+          );
+        }
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
@@ -394,6 +405,10 @@ export class BlocketClient {
       return result;
     } catch (error) {
       console.error(`[BlocketClient] Failed to get ad ${adId}:`, error);
+      // Re-throw the error so the handler can show it to the user
+      if (error instanceof Error) {
+        throw error;
+      }
       return null;
     }
   }
@@ -449,6 +464,18 @@ export class BlocketClient {
    */
   getRateLimitStats(): { used: number; remaining: number; windowMs: number } {
     return this.rateLimiter.getStats();
+  }
+
+  /**
+   * Filter listings by municipality (post-search filtering)
+   */
+  filterByMunicipality(
+    listings: BlocketListing[],
+    municipality: string
+  ): BlocketListing[] {
+    return listings.filter((listing) =>
+      matchesMunicipality(listing.location, municipality)
+    );
   }
 
   /**

@@ -16,7 +16,8 @@ export const toolDefinitions: Tool[] = [
     name: 'marketplace_search',
     description:
       'Search across both Blocket and Tradera simultaneously. Returns unified results for easy comparison. ' +
-      'Best for general product searches. Note: Tradera has strict rate limits (100 calls/day), results may be cached.',
+      'Best for general product searches. NOTE: Region filter only applies to Blocket (Tradera does not support geographic filtering). ' +
+      'Tradera has strict rate limits (100 calls/day), results may be cached.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -31,7 +32,13 @@ export const toolDefinitions: Tool[] = [
         },
         region: {
           type: 'string',
-          description: 'Swedish region to filter by (e.g., "STOCKHOLM", "SKANE")',
+          description: 'Swedish region (län) to filter by (e.g., "STOCKHOLM", "SKANE"). Only applies to Blocket.',
+        },
+        municipality: {
+          type: 'string',
+          description:
+            'Swedish municipality (kommun) to filter by (e.g., "Göteborg", "Nacka", "Solna"). ' +
+            'Filters results after search. Only applies to Blocket.',
         },
         price_min: {
           type: 'number',
@@ -62,7 +69,8 @@ export const toolDefinitions: Tool[] = [
     name: 'blocket_search',
     description:
       'Search Blocket for general items (electronics, furniture, etc.). ' +
-      'Higher rate limit than Tradera. Good for everyday items.',
+      'Higher rate limit than Tradera. Good for everyday items. ' +
+      'NOTE: "locations" filters by region (län), not city. Use "municipality" for city-level filtering.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -115,7 +123,15 @@ export const toolDefinitions: Tool[] = [
               'GOTLAND',
             ],
           },
-          description: 'Location filters',
+          description:
+            'Region filters (län). Note: Filters by county, not city. ' +
+            'For example, STOCKHOLM includes all of Stockholm County (Märsta, Kista, etc.).',
+        },
+        municipality: {
+          type: 'string',
+          description:
+            'Municipality (kommun) filter for city-level filtering (e.g., "Stockholm", "Göteborg", "Nacka"). ' +
+            'Filters results after search to only show items from specific municipality.',
         },
         sort_order: {
           type: 'string',
@@ -240,7 +256,11 @@ export const toolDefinitions: Tool[] = [
         locations: {
           type: 'array',
           items: { type: 'string' },
-          description: 'Location filters',
+          description: 'Region filters (län). Filters by county, not city.',
+        },
+        municipality: {
+          type: 'string',
+          description: 'Municipality (kommun) filter for city-level filtering.',
         },
         sort_order: {
           type: 'string',
@@ -275,8 +295,23 @@ export const toolDefinitions: Tool[] = [
         },
         types: {
           type: 'array',
-          items: { type: 'string' },
-          description: 'Boat types',
+          items: {
+            type: 'string',
+            enum: [
+              'SEGELBAT',
+              'MOTORBAT',
+              'RIB',
+              'KATAMARAN',
+              'JOLLE',
+              'HUSBAT',
+              'SPEEDBAT',
+              'FIBERBAT',
+              'RODDBAT',
+              'KAJAK',
+              'KANOT',
+            ],
+          },
+          description: 'Boat types to filter by',
         },
         price_from: {
           type: 'number',
@@ -297,7 +332,11 @@ export const toolDefinitions: Tool[] = [
         locations: {
           type: 'array',
           items: { type: 'string' },
-          description: 'Location filters',
+          description: 'Region filters (län). Filters by county, not city.',
+        },
+        municipality: {
+          type: 'string',
+          description: 'Municipality (kommun) filter for city-level filtering.',
         },
         sort_order: {
           type: 'string',
@@ -328,8 +367,23 @@ export const toolDefinitions: Tool[] = [
         },
         types: {
           type: 'array',
-          items: { type: 'string' },
-          description: 'MC types (e.g., sport, cruiser)',
+          items: {
+            type: 'string',
+            enum: [
+              'SPORT',
+              'CRUISER',
+              'TOURING',
+              'NAKED',
+              'ENDURO',
+              'CROSS',
+              'SCOOTER',
+              'MOPED',
+              'CLASSIC',
+              'ADVENTURE',
+              'SUPERSPORT',
+            ],
+          },
+          description: 'MC types to filter by',
         },
         price_from: {
           type: 'number',
@@ -350,7 +404,11 @@ export const toolDefinitions: Tool[] = [
         locations: {
           type: 'array',
           items: { type: 'string' },
-          description: 'Location filters',
+          description: 'Region filters (län). Filters by county, not city.',
+        },
+        municipality: {
+          type: 'string',
+          description: 'Municipality (kommun) filter for city-level filtering.',
         },
         sort_order: {
           type: 'string',
@@ -372,7 +430,8 @@ export const toolDefinitions: Tool[] = [
     name: 'tradera_search',
     description:
       'Search Tradera auctions. IMPORTANT: Tradera has a strict limit of 100 API calls per 24 hours. ' +
-      'Results are aggressively cached (30 min). Great for finding unique items and deals.',
+      'Results are aggressively cached (30 min). Great for finding unique items and deals. ' +
+      'NOTE: Tradera does NOT support geographic filtering - searches return results from all of Sweden.',
     inputSchema: {
       type: 'object',
       properties: {

@@ -5,6 +5,7 @@
 
 import { getBlocketClient } from '../clients/blocket-client.js';
 import { getTraderaClient } from '../clients/tradera-client.js';
+import { getRegionForMunicipality, matchesMunicipality } from '../utils/municipalities.js';
 import type { Platform, UnifiedListing, PriceStats, PriceComparison } from '../types/unified.js';
 import type { BlocketLocation, BlocketCategory, BlocketSortOrder, BlocketCarSortOrder, BlocketColor } from '../types/blocket.js';
 import type { TraderaOrderBy } from '../types/tradera.js';
@@ -70,6 +71,7 @@ export async function handleMarketplaceSearch(args: {
   query: string;
   platforms?: Platform[];
   region?: string;
+  municipality?: string;
   price_min?: number;
   price_max?: number;
   sort_by?: 'relevance' | 'price_asc' | 'price_desc' | 'date_desc';
@@ -86,18 +88,40 @@ export async function handleMarketplaceSearch(args: {
     cached: { blocket: false, tradera: false },
   };
 
+  // If municipality is specified, determine parent region
+  let region = args.region;
+  if (args.municipality && !region) {
+    const parentRegion = getRegionForMunicipality(args.municipality);
+    if (parentRegion) {
+      region = parentRegion;
+      metadata.municipality_filter = args.municipality;
+      metadata.auto_selected_region = parentRegion;
+    }
+  }
+
   // Search Blocket
   if (platforms.includes('blocket')) {
     try {
       const blocketResult = await blocket.search({
         query: args.query,
-        locations: args.region ? [args.region as BlocketLocation] : undefined,
+        locations: region ? [region as BlocketLocation] : undefined,
         sort_order: mapSortOrder(args.sort_by) as BlocketSortOrder | undefined,
         page: args.page,
       });
-      const normalized = blocket.normalizeResults(blocketResult);
+      let normalized = blocket.normalizeResults(blocketResult);
+
+      // Post-filter by municipality if specified
+      if (args.municipality) {
+        const beforeFilter = normalized.length;
+        normalized = normalized.filter(listing =>
+          matchesMunicipality(listing.location.city, args.municipality!)
+        );
+        metadata.municipality_filtered_count = beforeFilter - normalized.length;
+      }
+
       results.push(...normalized);
-      metadata.blocket_count = blocketResult.pagination.total_results ?? normalized.length;
+      metadata.blocket_count = normalized.length;
+      metadata.blocket_total_before_filter = blocketResult.pagination.total_results;
       metadata.cached = { ...(metadata.cached as Record<string, boolean>), blocket: blocketResult.cached ?? false };
     } catch (err) {
       metadata.blocket_error = err instanceof Error ? err.message : 'Unknown error';
@@ -155,25 +179,51 @@ export async function handleBlocketSearch(args: {
   query: string;
   category?: BlocketCategory;
   locations?: BlocketLocation[];
+  municipality?: string;
   sort_order?: BlocketSortOrder;
   page?: number;
 }): Promise<ToolResult> {
   await ensureInitialized();
 
   try {
+    // If municipality is specified, determine parent region
+    let locations = args.locations;
+    if (args.municipality && (!locations || locations.length === 0)) {
+      const parentRegion = getRegionForMunicipality(args.municipality);
+      if (parentRegion) {
+        locations = [parentRegion];
+      }
+    }
+
     const result = await blocket.search({
       query: args.query,
       category: args.category,
-      locations: args.locations,
+      locations: locations,
       sort_order: args.sort_order,
       page: args.page,
     });
 
-    return success({
-      results: result.results,
+    let results = result.results;
+
+    // Post-filter by municipality if specified
+    const metadata: Record<string, unknown> = {
       pagination: result.pagination,
       cached: result.cached,
       rate_limit: blocket.getRateLimitStats(),
+    };
+
+    if (args.municipality) {
+      const beforeFilter = results.length;
+      results = results.filter(listing =>
+        matchesMunicipality(listing.location, args.municipality!)
+      );
+      metadata.municipality_filter = args.municipality;
+      metadata.filtered_out = beforeFilter - results.length;
+    }
+
+    return success({
+      results,
+      ...metadata,
     });
   } catch (err) {
     return error(err instanceof Error ? err.message : 'Blocket search failed');
@@ -192,12 +242,22 @@ export async function handleBlocketSearchCars(args: {
   colors?: string[];
   transmissions?: string[];
   locations?: string[];
+  municipality?: string;
   sort_order?: BlocketCarSortOrder;
   page?: number;
 }): Promise<ToolResult> {
   await ensureInitialized();
 
   try {
+    // If municipality is specified, determine parent region
+    let locations = args.locations;
+    if (args.municipality && (!locations || locations.length === 0)) {
+      const parentRegion = getRegionForMunicipality(args.municipality);
+      if (parentRegion) {
+        locations = [parentRegion];
+      }
+    }
+
     const result = await blocket.searchCars({
       query: args.query,
       models: args.models,
@@ -209,15 +269,30 @@ export async function handleBlocketSearchCars(args: {
       milage_to: args.milage_to,
       colors: args.colors as BlocketColor[] | undefined,
       transmissions: args.transmissions as ('AUTOMATIC' | 'MANUAL')[] | undefined,
-      locations: args.locations as BlocketLocation[] | undefined,
+      locations: locations as BlocketLocation[] | undefined,
       sort_order: args.sort_order,
       page: args.page,
     });
 
-    return success({
-      results: result.results,
+    let results = result.results;
+    const metadata: Record<string, unknown> = {
       pagination: result.pagination,
       cached: result.cached,
+    };
+
+    // Post-filter by municipality if specified
+    if (args.municipality) {
+      const beforeFilter = results.length;
+      results = results.filter(listing =>
+        matchesMunicipality(listing.location, args.municipality!)
+      );
+      metadata.municipality_filter = args.municipality;
+      metadata.filtered_out = beforeFilter - results.length;
+    }
+
+    return success({
+      results,
+      ...metadata,
     });
   } catch (err) {
     return error(err instanceof Error ? err.message : 'Car search failed');
@@ -232,12 +307,22 @@ export async function handleBlocketSearchBoats(args: {
   length_from?: number;
   length_to?: number;
   locations?: string[];
+  municipality?: string;
   sort_order?: BlocketSortOrder;
   page?: number;
 }): Promise<ToolResult> {
   await ensureInitialized();
 
   try {
+    // If municipality is specified, determine parent region
+    let locations = args.locations;
+    if (args.municipality && (!locations || locations.length === 0)) {
+      const parentRegion = getRegionForMunicipality(args.municipality);
+      if (parentRegion) {
+        locations = [parentRegion];
+      }
+    }
+
     const result = await blocket.searchBoats({
       query: args.query,
       types: args.types,
@@ -245,15 +330,30 @@ export async function handleBlocketSearchBoats(args: {
       price_to: args.price_to,
       length_from: args.length_from,
       length_to: args.length_to,
-      locations: args.locations as BlocketLocation[] | undefined,
+      locations: locations as BlocketLocation[] | undefined,
       sort_order: args.sort_order,
       page: args.page,
     });
 
-    return success({
-      results: result.results,
+    let results = result.results;
+    const metadata: Record<string, unknown> = {
       pagination: result.pagination,
       cached: result.cached,
+    };
+
+    // Post-filter by municipality if specified
+    if (args.municipality) {
+      const beforeFilter = results.length;
+      results = results.filter(listing =>
+        matchesMunicipality(listing.location, args.municipality!)
+      );
+      metadata.municipality_filter = args.municipality;
+      metadata.filtered_out = beforeFilter - results.length;
+    }
+
+    return success({
+      results,
+      ...metadata,
     });
   } catch (err) {
     return error(err instanceof Error ? err.message : 'Boat search failed');
@@ -269,12 +369,22 @@ export async function handleBlocketSearchMc(args: {
   engine_volume_from?: number;
   engine_volume_to?: number;
   locations?: string[];
+  municipality?: string;
   sort_order?: BlocketSortOrder;
   page?: number;
 }): Promise<ToolResult> {
   await ensureInitialized();
 
   try {
+    // If municipality is specified, determine parent region
+    let locations = args.locations;
+    if (args.municipality && (!locations || locations.length === 0)) {
+      const parentRegion = getRegionForMunicipality(args.municipality);
+      if (parentRegion) {
+        locations = [parentRegion];
+      }
+    }
+
     const result = await blocket.searchMc({
       query: args.query,
       models: args.models,
@@ -283,15 +393,30 @@ export async function handleBlocketSearchMc(args: {
       price_to: args.price_to,
       engine_volume_from: args.engine_volume_from,
       engine_volume_to: args.engine_volume_to,
-      locations: args.locations as BlocketLocation[] | undefined,
+      locations: locations as BlocketLocation[] | undefined,
       sort_order: args.sort_order,
       page: args.page,
     });
 
-    return success({
-      results: result.results,
+    let results = result.results;
+    const metadata: Record<string, unknown> = {
       pagination: result.pagination,
       cached: result.cached,
+    };
+
+    // Post-filter by municipality if specified
+    if (args.municipality) {
+      const beforeFilter = results.length;
+      results = results.filter(listing =>
+        matchesMunicipality(listing.location, args.municipality!)
+      );
+      metadata.municipality_filter = args.municipality;
+      metadata.filtered_out = beforeFilter - results.length;
+    }
+
+    return success({
+      results,
+      ...metadata,
     });
   } catch (err) {
     return error(err instanceof Error ? err.message : 'MC search failed');
@@ -363,7 +488,11 @@ export async function handleGetListingDetails(args: {
     try {
       const result = await blocket.getAd(args.listing_id, args.ad_type ?? 'RECOMMERCE');
       if (!result) {
-        return error(`Listing ${args.listing_id} not found on Blocket`);
+        return error(
+          `Listing ${args.listing_id} not found on Blocket. ` +
+          `Make sure you're using the correct ad_type (${args.ad_type ?? 'RECOMMERCE'}). ` +
+          `If you got this ID from search results, try matching the ad_type to the listing type.`
+        );
       }
       return success(result);
     } catch (err) {

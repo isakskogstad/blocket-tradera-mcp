@@ -45,6 +45,38 @@ export type BlocketColor = typeof BlocketColors[number];
 export const BlocketAdTypes = ['RECOMMERCE', 'CAR', 'BOAT', 'MC'] as const;
 export type BlocketAdType = typeof BlocketAdTypes[number];
 
+// Boat types
+export const BlocketBoatTypes = [
+  'SEGELBAT',
+  'MOTORBAT',
+  'RIB',
+  'KATAMARAN',
+  'JOLLE',
+  'HUSBAT',
+  'SPEEDBAT',
+  'FIBERBAT',
+  'RODDBAT',
+  'KAJAK',
+  'KANOT',
+] as const;
+export type BlocketBoatType = typeof BlocketBoatTypes[number];
+
+// Motorcycle types
+export const BlocketMcTypes = [
+  'SPORT',
+  'CRUISER',
+  'TOURING',
+  'NAKED',
+  'ENDURO',
+  'CROSS',
+  'SCOOTER',
+  'MOPED',
+  'CLASSIC',
+  'ADVENTURE',
+  'SUPERSPORT',
+] as const;
+export type BlocketMcType = typeof BlocketMcTypes[number];
+
 // Car models - most popular
 export const BlocketCarModels = [
   'AUDI', 'BMW', 'CHEVROLET', 'CITROEN', 'DACIA', 'FIAT', 'FORD',

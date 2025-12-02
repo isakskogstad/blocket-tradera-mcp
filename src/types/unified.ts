@@ -52,6 +52,7 @@ export interface UnifiedListing {
     type?: 'private' | 'dealer' | 'shop';
     rating?: number;
     feedbackPercentage?: number;
+    city?: string;
   };
 
   /** Category information */
@@ -77,6 +78,16 @@ export interface UnifiedListing {
   platformSpecific?: {
     // Tradera auction info
     bidCount?: number;
+    nextBid?: number;
+    brand?: string;
+    model?: string;
+    storage?: string;
+    conditionText?: string;
+    shippingOptions?: Array<{
+      name: string;
+      cost: number;
+      provider?: string;
+    }>;
 
     // Blocket vehicle info
     mileage?: number;
@@ -85,7 +96,6 @@ export interface UnifiedListing {
     fuelType?: string;
     color?: string;
     make?: string;
-    model?: string;
   };
 }
 

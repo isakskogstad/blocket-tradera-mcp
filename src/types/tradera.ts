@@ -78,14 +78,32 @@ export interface TraderaItem {
   shippingOptions?: TraderaShippingOption[];
   itemUrl?: string;
   condition?: 'new' | 'used' | 'refurbished';
+  nextBid?: number;
+  sellerRating?: number;
+  sellerCity?: string;
+  sellerTotalRating?: number;
+  conditionText?: string;
+  attributes?: {
+    brand?: string;
+    model?: string;
+    storage?: string;
+    condition?: string;
+  };
+  auctionStatus?: {
+    ended: boolean;
+    gotBidders: boolean;
+    gotWinner: boolean;
+  };
 }
 
 export type TraderaItemType = 'Auction' | 'BuyItNow' | 'ShopItem';
 
 export interface TraderaShippingOption {
-  shippingId: number;
-  shippingName: string;
+  shippingId?: number;
+  shippingName?: string;
+  name: string;
   cost: number;
+  provider?: string;
 }
 
 // ============================================

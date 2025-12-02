@@ -1,12 +1,12 @@
 /**
- * Tradera SOAP API Client
+ * Tradera REST API Client
  * https://api.tradera.com/v3/
  *
  * CRITICAL: Rate limit is 100 calls per 24 hours!
  * This client implements aggressive caching and budget management.
  */
 
-import { createClientAsync, Client } from 'soap';
+import { parseStringPromise } from 'xml2js';
 import { CacheManager, getCacheManager, CacheTTL } from '../cache/cache-manager.js';
 import { normalizeTraderaItem } from '../utils/normalizer.js';
 import type {
@@ -21,10 +21,14 @@ import type {
 } from '../types/tradera.js';
 import type { UnifiedListing } from '../types/unified.js';
 
-// SOAP service URLs
-const SOAP_URLS = {
-  public: 'https://api.tradera.com/v3/PublicService.asmx?WSDL',
-  search: 'https://api.tradera.com/v3/SearchService.asmx?WSDL',
+// REST API endpoints
+const API_BASE = 'https://api.tradera.com/v3';
+const API_ENDPOINTS = {
+  search: `${API_BASE}/searchservice.asmx/Search`,
+  getItem: `${API_BASE}/publicservice.asmx/GetItem`,
+  getCategories: `${API_BASE}/publicservice.asmx/GetCategories`,
+  getCounties: `${API_BASE}/publicservice.asmx/GetCounties`,
+  getFeedbackSummary: `${API_BASE}/publicservice.asmx/GetFeedbackSummary`,
 };
 
 export interface TraderaClientOptions {
@@ -36,8 +40,6 @@ export interface TraderaClientOptions {
 export class TraderaClient {
   private readonly auth: TraderaAuth;
   private readonly cache: CacheManager;
-  private publicClient: Client | null = null;
-  private searchClient: Client | null = null;
 
   // API Budget tracking (100 calls/24h)
   private budget: TraderaApiBudget = {
@@ -58,7 +60,7 @@ export class TraderaClient {
   }
 
   /**
-   * Initialize SOAP clients and warm cache
+   * Initialize cache and warm up
    */
   async init(): Promise<void> {
     await this.cache.init();
@@ -118,25 +120,35 @@ export class TraderaClient {
     }
 
     try {
-      const client = await this.getSearchClient();
+      // Build URL with query parameters
+      const url = new URL(API_ENDPOINTS.search);
+      url.searchParams.append('query', params.query);
+      url.searchParams.append('categoryId', String(params.categoryId ?? 0));
+      url.searchParams.append('orderBy', params.orderBy ?? 'Relevance');
+      url.searchParams.append('pageNumber', String(params.pageNumber ?? 1));
+      url.searchParams.append('appId', String(this.auth.appId));
+      url.searchParams.append('appKey', this.auth.appKey);
 
-      // Make SOAP call - parameters passed directly (not wrapped in request object)
-      const [response] = await client.SearchAsync({
-        query: params.query,
-        categoryId: params.categoryId ?? 0,
-        orderBy: params.orderBy ?? 'Relevance',
-        pageNumber: params.pageNumber ?? 1,
-      });
+      const response = await fetch(url.toString());
+
+      if (!response.ok) {
+        throw new Error(`Tradera API returned ${response.status}: ${response.statusText}`);
+      }
+
+      const xmlText = await response.text();
+      const parsed = await parseStringPromise(xmlText, { explicitArray: false });
 
       this.recordApiCall();
 
-      const items: TraderaItem[] = this.parseSearchResponse(response);
+      const items: TraderaItem[] = this.parseSearchResponse(parsed);
+      const totalCount = this.extractTotalCount(parsed);
+
       const result: TraderaSearchResult = {
         items,
-        totalCount: response?.TotalNumberOfItems ?? items.length,
+        totalCount,
         pageNumber: params.pageNumber ?? 1,
         itemsPerPage: params.itemsPerPage ?? 50,
-        totalPages: Math.ceil((response?.TotalNumberOfItems ?? items.length) / (params.itemsPerPage ?? 50)),
+        totalPages: Math.ceil(totalCount / (params.itemsPerPage ?? 50)),
         cached: false,
       };
 
@@ -169,19 +181,28 @@ export class TraderaClient {
     }
 
     try {
-      const client = await this.getPublicClient();
+      const url = new URL(API_ENDPOINTS.getItem);
+      url.searchParams.append('itemId', String(itemId));
+      url.searchParams.append('appId', String(this.auth.appId));
+      url.searchParams.append('appKey', this.auth.appKey);
 
-      const [response] = await client.GetItemAsync({
-        itemId,
-      });
+      const response = await fetch(url.toString());
+
+      if (!response.ok) {
+        throw new Error(`Tradera API returned ${response.status}: ${response.statusText}`);
+      }
+
+      const xmlText = await response.text();
+      const parsed = await parseStringPromise(xmlText, { explicitArray: false });
 
       this.recordApiCall();
 
-      if (!response?.Item) {
+      const itemData = this.extractItemFromResponse(parsed);
+      if (!itemData) {
         return null;
       }
 
-      const item = this.parseItem(response.Item);
+      const item = this.parseItem(itemData, true);
       await this.cache.set('tradera:item', cacheKey, item, CacheTTL.tradera.itemDetails);
 
       return item;
@@ -208,13 +229,22 @@ export class TraderaClient {
     }
 
     try {
-      const client = await this.getPublicClient();
+      const url = new URL(API_ENDPOINTS.getCategories);
+      url.searchParams.append('appId', String(this.auth.appId));
+      url.searchParams.append('appKey', this.auth.appKey);
 
-      const [response] = await client.GetCategoriesAsync({});
+      const response = await fetch(url.toString());
+
+      if (!response.ok) {
+        throw new Error(`Tradera API returned ${response.status}: ${response.statusText}`);
+      }
+
+      const xmlText = await response.text();
+      const parsed = await parseStringPromise(xmlText, { explicitArray: false });
 
       this.recordApiCall();
 
-      const categories = this.parseCategories(response?.Categories ?? []);
+      const categories = this.parseCategories(parsed);
       await this.cache.set('tradera:categories', 'all', categories, CacheTTL.tradera.categories);
 
       return categories;
@@ -241,17 +271,22 @@ export class TraderaClient {
     }
 
     try {
-      const client = await this.getPublicClient();
+      const url = new URL(API_ENDPOINTS.getCounties);
+      url.searchParams.append('appId', String(this.auth.appId));
+      url.searchParams.append('appKey', this.auth.appKey);
 
-      const [response] = await client.GetCountiesAsync({});
+      const response = await fetch(url.toString());
+
+      if (!response.ok) {
+        throw new Error(`Tradera API returned ${response.status}: ${response.statusText}`);
+      }
+
+      const xmlText = await response.text();
+      const parsed = await parseStringPromise(xmlText, { explicitArray: false });
 
       this.recordApiCall();
 
-      const counties: TraderaCounty[] = (response?.Counties ?? []).map((c: { CountyId: number; CountyName: string }) => ({
-        countyId: c.CountyId,
-        countyName: c.CountyName,
-      }));
-
+      const counties = this.parseCounties(parsed);
       await this.cache.set('tradera:counties', 'all', counties, CacheTTL.tradera.counties);
 
       return counties;
@@ -277,25 +312,26 @@ export class TraderaClient {
     }
 
     try {
-      const client = await this.getPublicClient();
+      const url = new URL(API_ENDPOINTS.getFeedbackSummary);
+      url.searchParams.append('userId', String(userId));
+      url.searchParams.append('appId', String(this.auth.appId));
+      url.searchParams.append('appKey', this.auth.appKey);
 
-      const [response] = await client.GetFeedbackSummaryAsync({
-        userId,
-      });
+      const response = await fetch(url.toString());
+
+      if (!response.ok) {
+        throw new Error(`Tradera API returned ${response.status}: ${response.statusText}`);
+      }
+
+      const xmlText = await response.text();
+      const parsed = await parseStringPromise(xmlText, { explicitArray: false });
 
       this.recordApiCall();
 
-      if (!response) {
+      const summary = this.parseFeedbackSummary(parsed, userId);
+      if (!summary) {
         return null;
       }
-
-      const summary: TraderaFeedbackSummary = {
-        userId,
-        totalPositive: response.TotalPositive ?? 0,
-        totalNegative: response.TotalNegative ?? 0,
-        totalNeutral: response.TotalNeutral ?? 0,
-        feedbackPercentage: response.FeedbackPercentage ?? 0,
-      };
 
       await this.cache.set('tradera:feedback', cacheKey, summary, CacheTTL.tradera.feedbackSummary);
 
@@ -311,44 +347,6 @@ export class TraderaClient {
    */
   normalizeResults(results: TraderaSearchResult): UnifiedListing[] {
     return results.items.map((item) => normalizeTraderaItem(item));
-  }
-
-  /**
-   * Add SOAP authentication header to client
-   * IMPORTANT: Auth must be in SOAP header, not in request body!
-   */
-  private addAuthHeader(client: Client): void {
-    client.addSoapHeader({
-      AuthenticationHeader: {
-        attributes: {
-          xmlns: 'http://api.tradera.com',
-        },
-        AppId: this.auth.appId,
-        AppKey: this.auth.appKey,
-      },
-    });
-  }
-
-  /**
-   * Get or create PublicService client
-   */
-  private async getPublicClient(): Promise<Client> {
-    if (!this.publicClient) {
-      this.publicClient = await createClientAsync(SOAP_URLS.public);
-      this.addAuthHeader(this.publicClient);
-    }
-    return this.publicClient;
-  }
-
-  /**
-   * Get or create SearchService client
-   */
-  private async getSearchClient(): Promise<Client> {
-    if (!this.searchClient) {
-      this.searchClient = await createClientAsync(SOAP_URLS.search);
-      this.addAuthHeader(this.searchClient);
-    }
-    return this.searchClient;
   }
 
   /**
@@ -385,30 +383,71 @@ export class TraderaClient {
   }
 
   /**
-   * Parse SOAP search response to items
+   * Extract total count from search response
    */
-  private parseSearchResponse(response: Record<string, unknown> | null | undefined): TraderaItem[] {
-    if (!response) return [];
-
-    const items = (response as Record<string, unknown>).Items ??
-                  ((response as Record<string, { Items?: unknown[] }>).SearchResult?.Items) ?? [];
-    if (!Array.isArray(items)) return [];
-
-    return items.map((item) => this.parseItem(item as Record<string, unknown>));
+  private extractTotalCount(parsed: any): number {
+    try {
+      // REST API returns SearchResult directly (not wrapped in SOAP)
+      const searchResult = parsed.SearchResult;
+      if (searchResult?.TotalNumberOfItems) {
+        return Number(searchResult.TotalNumberOfItems);
+      }
+      return 0;
+    } catch (error) {
+      console.error('[TraderaClient] Failed to extract total count:', error);
+      return 0;
+    }
   }
 
   /**
-   * Parse SOAP item to TraderaItem
+   * Extract item from GetItem response
    */
-  private parseItem(item: Record<string, unknown>): TraderaItem {
-    return {
+  private extractItemFromResponse(parsed: any): any {
+    try {
+      // REST API returns Item directly (not wrapped in SOAP)
+      return parsed.Item;
+    } catch (error) {
+      console.error('[TraderaClient] Failed to extract item from response:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Parse search response to items array
+   */
+  private parseSearchResponse(parsed: any): TraderaItem[] {
+    try {
+      // REST API returns SearchResult -> Items array directly
+      const searchResult = parsed.SearchResult;
+      const items = searchResult?.Items;
+
+      if (!items) {
+        return [];
+      }
+
+      // Items is an array of item objects (not wrapped in Item element)
+      const itemArray = Array.isArray(items) ? items : [items];
+      return itemArray.map((item) => this.parseItem(item, false));
+    } catch (error) {
+      console.error('[TraderaClient] Failed to parse search response:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Parse XML item to TraderaItem
+   * @param item - Raw XML item data
+   * @param isDetailedView - Whether this is from GetItem (detailed) or Search (summary)
+   */
+  private parseItem(item: any, isDetailedView: boolean): TraderaItem {
+    const baseItem: TraderaItem = {
       itemId: Number(item.Id ?? item.ItemId ?? 0),
       shortDescription: String(item.ShortDescription ?? item.Title ?? ''),
-      longDescription: item.LongDescription as string | undefined,
+      longDescription: item.LongDescription,
       categoryId: Number(item.CategoryId ?? 0),
-      categoryName: item.CategoryName as string | undefined,
+      categoryName: item.CategoryName,
       sellerId: Number(item.SellerId ?? 0),
-      sellerAlias: item.SellerAlias as string | undefined,
+      sellerAlias: item.SellerAlias,
       startPrice: item.StartPrice ? Number(item.StartPrice) : undefined,
       reservePrice: item.ReservePrice ? Number(item.ReservePrice) : undefined,
       buyItNowPrice: item.BuyItNowPrice ? Number(item.BuyItNowPrice) : undefined,
@@ -416,54 +455,228 @@ export class TraderaClient {
       bidCount: Number(item.TotalBids ?? 0),
       startDate: String(item.StartDate ?? ''),
       endDate: String(item.EndDate ?? ''),
-      thumbnailUrl: item.ThumbnailLink as string | undefined,
+      thumbnailUrl: item.ThumbnailLink,
       imageUrls: this.parseImageUrls(item.ImageLinks),
       itemType: this.parseItemType(item.ItemType),
-      itemUrl: item.ItemUrl as string | undefined,
+      itemUrl: item.ItemUrl,
     };
+
+    // Add detailed fields if available (from GetItem or Search with extended data)
+    if (item.NextBid) {
+      baseItem.nextBid = Number(item.NextBid);
+    }
+
+    if (item.SellerDsrAverage) {
+      baseItem.sellerRating = Number(item.SellerDsrAverage);
+    }
+
+    // Parse attributes (brand, model, storage, condition)
+    if (item.AttributeValues) {
+      baseItem.attributes = this.parseAttributes(item.AttributeValues);
+    }
+
+    // Parse seller details (from detailed view)
+    if (isDetailedView && item.Seller) {
+      if (item.Seller.City) {
+        baseItem.sellerCity = item.Seller.City;
+      }
+      if (item.Seller.TotalRating) {
+        baseItem.sellerTotalRating = Number(item.Seller.TotalRating);
+      }
+    }
+
+    // Parse shipping options
+    if (item.ShippingOptions) {
+      baseItem.shippingOptions = this.parseShippingOptions(item.ShippingOptions);
+    }
+
+    // Parse auction status (REST API uses string "true"/"false")
+    if (item.Status) {
+      baseItem.auctionStatus = {
+        ended: item.Status.Ended === 'true' || item.Status.Ended === true,
+        gotBidders: item.Status.GotBidders === 'true' || item.Status.GotBidders === true,
+        gotWinner: item.Status.GotWinner === 'true' || item.Status.GotWinner === true,
+      };
+    }
+
+    return baseItem;
   }
 
   /**
-   * Parse image URLs from SOAP response
+   * Parse attributes from AttributeValues (REST API structure)
    */
-  private parseImageUrls(imageLinks: unknown): string[] | undefined {
+  private parseAttributes(attrValues: any): { brand?: string; model?: string; storage?: string; condition?: string } {
+    const attrs: { brand?: string; model?: string; storage?: string; condition?: string } = {};
+
+    // REST API uses TermAttributeValues structure
+    if (!attrValues?.TermAttributeValues?.TermAttributeValue) {
+      return attrs;
+    }
+
+    const values = Array.isArray(attrValues.TermAttributeValues.TermAttributeValue)
+      ? attrValues.TermAttributeValues.TermAttributeValue
+      : [attrValues.TermAttributeValues.TermAttributeValue];
+
+    for (const attr of values) {
+      const name = attr.Name?.toLowerCase();
+      const value = attr.Values?.string;
+
+      if (!value) continue;
+
+      if (name === 'condition' || name === 'skick') {
+        attrs.condition = value;
+      } else if (name === 'mobile_brand' || name === 'märke' || name === 'brand') {
+        attrs.brand = value;
+      } else if (name === 'mobile_model' || name === 'modell' || name === 'model') {
+        attrs.model = value;
+      } else if (name === 'mobile_disk_memory' || name === 'lagring' || name === 'storage') {
+        attrs.storage = value;
+      }
+    }
+
+    return attrs;
+  }
+
+  /**
+   * Parse shipping options (REST API structure)
+   */
+  private parseShippingOptions(shippingOptions: any): any[] {
+    // REST API returns array directly
+    if (!shippingOptions || !Array.isArray(shippingOptions)) {
+      return [];
+    }
+
+    return shippingOptions.map((opt: any) => ({
+      shippingId: opt.ShippingOptionId ? Number(opt.ShippingOptionId) : undefined,
+      shippingProductId: opt.ShippingProductId ? Number(opt.ShippingProductId) : undefined,
+      shippingProviderId: opt.ShippingProviderId ? Number(opt.ShippingProviderId) : undefined,
+      cost: opt.Cost ? Number(opt.Cost) : 0,
+      weight: opt.ShippingWeight ? Number(opt.ShippingWeight) : undefined,
+    }));
+  }
+
+  /**
+   * Parse image URLs from XML response (REST API structure)
+   */
+  private parseImageUrls(imageLinks: any): string[] | undefined {
     if (!imageLinks) return undefined;
+
+    // REST API returns array of strings directly
     if (Array.isArray(imageLinks)) {
       return imageLinks.map((url) => String(url));
     }
+
+    // Also handle string array element
+    if (imageLinks.string) {
+      const links = Array.isArray(imageLinks.string)
+        ? imageLinks.string
+        : [imageLinks.string];
+      return links.map((url: any) => String(url));
+    }
+
     if (typeof imageLinks === 'string') {
       return [imageLinks];
     }
+
     return undefined;
   }
 
   /**
    * Parse item type
    */
-  private parseItemType(itemType: unknown): 'Auction' | 'BuyItNow' | 'ShopItem' {
+  private parseItemType(itemType: any): 'Auction' | 'BuyItNow' | 'ShopItem' {
     const type = String(itemType ?? 'Auction');
     if (type === 'BuyItNow' || type === 'ShopItem') return type;
     return 'Auction';
   }
 
   /**
-   * Parse categories from SOAP response
+   * Parse categories from XML response
    */
-  private parseCategories(categories: unknown[]): TraderaCategory[] {
-    if (!Array.isArray(categories)) return [];
+  private parseCategories(parsed: any): TraderaCategory[] {
+    try {
+      // REST API returns ArrayOfCategory directly
+      const categoriesResponse = parsed.ArrayOfCategory;
+      const categories = categoriesResponse?.Category;
 
-    return categories.map((catUnknown) => {
-      const cat = catUnknown as Record<string, unknown>;
+      if (!categories) {
+        return [];
+      }
+
+      const categoryArray = Array.isArray(categories) ? categories : [categories];
+      return this.parseCategoryArray(categoryArray);
+    } catch (error) {
+      console.error('[TraderaClient] Failed to parse categories:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Recursively parse category array
+   */
+  private parseCategoryArray(categories: any[]): TraderaCategory[] {
+    return categories.map((cat) => ({
+      categoryId: Number(cat.CategoryId ?? cat.Id ?? 0),
+      categoryName: String(cat.CategoryName ?? cat.Name ?? ''),
+      parentId: cat.ParentId ? Number(cat.ParentId) : undefined,
+      hasChildren: Boolean(cat.HasChildren ?? false),
+      childCategories: cat.ChildCategories?.Category
+        ? this.parseCategoryArray(
+            Array.isArray(cat.ChildCategories.Category)
+              ? cat.ChildCategories.Category
+              : [cat.ChildCategories.Category]
+          )
+        : undefined,
+    }));
+  }
+
+  /**
+   * Parse counties from XML response
+   */
+  private parseCounties(parsed: any): TraderaCounty[] {
+    try {
+      // REST API returns ArrayOfCounty directly
+      const countiesResponse = parsed.ArrayOfCounty;
+      const counties = countiesResponse?.County;
+
+      if (!counties) {
+        return [];
+      }
+
+      const countyArray = Array.isArray(counties) ? counties : [counties];
+      return countyArray.map((c: any) => ({
+        countyId: Number(c.CountyId ?? 0),
+        countyName: String(c.CountyName ?? ''),
+      }));
+    } catch (error) {
+      console.error('[TraderaClient] Failed to parse counties:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Parse feedback summary from XML response
+   */
+  private parseFeedbackSummary(parsed: any, userId: number): TraderaFeedbackSummary | null {
+    try {
+      // REST API returns FeedbackSummary directly
+      const feedbackSummary = parsed.FeedbackSummary;
+
+      if (!feedbackSummary) {
+        return null;
+      }
+
       return {
-        categoryId: Number(cat.CategoryId ?? cat.Id ?? 0),
-        categoryName: String(cat.CategoryName ?? cat.Name ?? ''),
-        parentId: cat.ParentId ? Number(cat.ParentId) : undefined,
-        hasChildren: Boolean(cat.HasChildren ?? false),
-        childCategories: cat.ChildCategories
-          ? this.parseCategories(cat.ChildCategories as unknown[])
-          : undefined,
+        userId,
+        totalPositive: Number(feedbackSummary.TotalPositive ?? 0),
+        totalNegative: Number(feedbackSummary.TotalNegative ?? 0),
+        totalNeutral: Number(feedbackSummary.TotalNeutral ?? 0),
+        feedbackPercentage: Number(feedbackSummary.FeedbackPercentage ?? 0),
       };
-    });
+    } catch (error) {
+      console.error('[TraderaClient] Failed to parse feedback summary:', error);
+      return null;
+    }
   }
 }
 

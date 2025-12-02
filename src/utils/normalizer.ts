@@ -64,6 +64,17 @@ export function normalizeBlocketListing(
 }
 
 /**
+ * Map Swedish condition text to condition enum
+ */
+function mapCondition(text?: string): 'new' | 'used' | 'refurbished' | undefined {
+  if (!text) return undefined;
+  const lower = text.toLowerCase();
+  if (lower.includes('ny') || lower.includes('oanvänd')) return 'new';
+  if (lower.includes('renoverad') || lower.includes('refurb')) return 'refurbished';
+  return 'used';
+}
+
+/**
  * Normalize a Tradera item to unified format
  */
 export function normalizeTraderaItem(item: TraderaItem): UnifiedListing {
@@ -81,6 +92,10 @@ export function normalizeTraderaItem(item: TraderaItem): UnifiedListing {
     priceAmount = item.currentBid ?? item.startPrice ?? 0;
   }
 
+  // Map condition from attributes if available
+  const conditionFromAttributes = mapCondition(item.attributes?.condition);
+  const finalCondition = conditionFromAttributes ?? item.condition ?? 'used';
+
   return {
     id,
     platform: 'tradera',
@@ -97,21 +112,34 @@ export function normalizeTraderaItem(item: TraderaItem): UnifiedListing {
     images: item.imageUrls ?? (item.thumbnailUrl ? [item.thumbnailUrl] : []),
     location: {
       region: 'Sweden', // Tradera doesn't always provide location
+      city: item.sellerCity,
     },
     seller: {
       id: String(item.sellerId),
       name: item.sellerAlias,
+      rating: item.sellerRating ?? item.sellerTotalRating,
+      city: item.sellerCity,
     },
     category: {
       id: String(item.categoryId),
       name: item.categoryName ?? 'Unknown',
     },
-    condition: item.condition ?? 'used',
+    condition: finalCondition,
     publishedAt: item.startDate,
     expiresAt: item.endDate,
     url: item.itemUrl ?? `https://www.tradera.com/item/${item.itemId}`,
     platformSpecific: {
       bidCount: item.bidCount,
+      nextBid: item.nextBid,
+      brand: item.attributes?.brand,
+      model: item.attributes?.model,
+      storage: item.attributes?.storage,
+      conditionText: item.attributes?.condition || item.conditionText,
+      shippingOptions: item.shippingOptions?.map(opt => ({
+        name: opt.name || opt.shippingName || 'Shipping',
+        cost: opt.cost ?? 0,
+        provider: opt.provider,
+      })),
     },
   };
 }

@@ -13,7 +13,7 @@ MCP server for Swedish marketplaces Blocket and Tradera. Enables AI assistants t
 - TypeScript (strict mode)
 - MCP SDK (@modelcontextprotocol/sdk)
 - Express.js (HTTP server)
-- SOAP (Tradera API)
+- REST API (Tradera API v3)
 - Node.js 18+
 
 ## Project Structure
@@ -24,7 +24,7 @@ blocket-tradera-mcp/
 │   ├── http-server.ts        # HTTP server for Render
 │   ├── clients/
 │   │   ├── blocket-client.ts # REST client
-│   │   └── tradera-client.ts # SOAP client + budget mgmt
+│   │   └── tradera-client.ts # REST client + budget mgmt
 │   ├── cache/                # Two-tier caching
 │   ├── tools/                # 10 MCP tools
 │   ├── types/                # TypeScript definitions
@@ -89,11 +89,33 @@ MCP servers have TWO entry points:
 
 Always use `npm run start:http` for HTTP deployments, not `npm start`.
 
+### Tradera REST API Migration (2025-12-02)
+
+**Migration:** SOAP API → REST API v3
+
+**Changes:**
+1. Migrated from SOAP endpoints to REST endpoints (https://api.tradera.com/v3/)
+2. Updated XML parsing to handle REST API structure (no SOAP envelope)
+3. Implemented new fields:
+   - `nextBid` - Next bid amount in search results
+   - `sellerRating` - Seller DSR average rating
+   - `attributes` - Brand, model, storage, condition (mobile/electronics)
+   - `sellerCity` - Seller's city (detailed view)
+   - `sellerTotalRating` - Total seller rating count
+   - `shippingOptions[]` - Array of shipping methods with costs
+   - `auctionStatus` - Ended, gotBidders, gotWinner flags
+
+**Test Results:** 8/8 tests passed (100% success rate)
+- All new fields extracted correctly
+- Caching working as expected
+- Budget tracking functional
+- See `TEST-RESULTS.md` for details
+
 ## Backup Info
 - Last session backup: 2025-12-02
 - Backup retention policy: default
 
 ## Notes
-- Tradera uses SOAP API with AppId/AppKey auth
+- Tradera uses REST API v3 with AppId/AppKey auth
 - Blocket uses unofficial REST API (blocket-api.se)
 - Two-tier caching: Memory LRU + File persistent

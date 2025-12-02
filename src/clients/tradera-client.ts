@@ -120,17 +120,12 @@ export class TraderaClient {
     try {
       const client = await this.getSearchClient();
 
-      const request = {
+      // Make SOAP call - parameters passed directly (not wrapped in request object)
+      const [response] = await client.SearchAsync({
         query: params.query,
         categoryId: params.categoryId ?? 0,
         orderBy: params.orderBy ?? 'Relevance',
         pageNumber: params.pageNumber ?? 1,
-        itemsPerPage: params.itemsPerPage ?? 50,
-      };
-
-      // Make SOAP call (auth is in SOAP header, not here)
-      const [response] = await client.SearchAsync({
-        request,
       });
 
       this.recordApiCall();

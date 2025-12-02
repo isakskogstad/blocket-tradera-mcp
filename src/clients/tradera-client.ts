@@ -128,9 +128,8 @@ export class TraderaClient {
         itemsPerPage: params.itemsPerPage ?? 50,
       };
 
-      // Make SOAP call
+      // Make SOAP call (auth is in SOAP header, not here)
       const [response] = await client.SearchAsync({
-        ...this.getAuthHeader(),
         request,
       });
 
@@ -178,7 +177,6 @@ export class TraderaClient {
       const client = await this.getPublicClient();
 
       const [response] = await client.GetItemAsync({
-        ...this.getAuthHeader(),
         itemId,
       });
 
@@ -217,9 +215,7 @@ export class TraderaClient {
     try {
       const client = await this.getPublicClient();
 
-      const [response] = await client.GetCategoriesAsync({
-        ...this.getAuthHeader(),
-      });
+      const [response] = await client.GetCategoriesAsync({});
 
       this.recordApiCall();
 
@@ -252,9 +248,7 @@ export class TraderaClient {
     try {
       const client = await this.getPublicClient();
 
-      const [response] = await client.GetCountiesAsync({
-        ...this.getAuthHeader(),
-      });
+      const [response] = await client.GetCountiesAsync({});
 
       this.recordApiCall();
 
@@ -291,7 +285,6 @@ export class TraderaClient {
       const client = await this.getPublicClient();
 
       const [response] = await client.GetFeedbackSummaryAsync({
-        ...this.getAuthHeader(),
         userId,
       });
 
@@ -326,15 +319,19 @@ export class TraderaClient {
   }
 
   /**
-   * Get SOAP auth header
+   * Add SOAP authentication header to client
+   * IMPORTANT: Auth must be in SOAP header, not in request body!
    */
-  private getAuthHeader() {
-    return {
+  private addAuthHeader(client: Client): void {
+    client.addSoapHeader({
       AuthenticationHeader: {
+        attributes: {
+          xmlns: 'http://api.tradera.com',
+        },
         AppId: this.auth.appId,
         AppKey: this.auth.appKey,
       },
-    };
+    });
   }
 
   /**
@@ -343,6 +340,7 @@ export class TraderaClient {
   private async getPublicClient(): Promise<Client> {
     if (!this.publicClient) {
       this.publicClient = await createClientAsync(SOAP_URLS.public);
+      this.addAuthHeader(this.publicClient);
     }
     return this.publicClient;
   }
@@ -353,6 +351,7 @@ export class TraderaClient {
   private async getSearchClient(): Promise<Client> {
     if (!this.searchClient) {
       this.searchClient = await createClientAsync(SOAP_URLS.search);
+      this.addAuthHeader(this.searchClient);
     }
     return this.searchClient;
   }

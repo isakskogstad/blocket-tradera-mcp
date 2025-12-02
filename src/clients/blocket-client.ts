@@ -32,7 +32,85 @@ import type {
 } from '../types/blocket.js';
 import type { UnifiedListing } from '../types/unified.js';
 
-// Response validation schemas (loose validation, then cast)
+// Response validation schemas matching actual Blocket API response
+const BlocketApiListingSchema = z.object({
+  ad_id: z.union([z.string(), z.number()]).transform(String),
+  heading: z.string(),
+  body: z.string().optional(),
+  price: z.object({
+    amount: z.number().optional(),
+    currency_code: z.string().optional(),
+    price_unit: z.string().optional(),
+  }).optional(),
+  location: z.string().optional(),
+  region: z.string().optional(),
+  timestamp: z.number().optional(),
+  type: z.string().optional(),
+  ad_type: z.number().optional(),
+  image_urls: z.array(z.string()).optional(),
+  canonical_url: z.string().optional(),
+  brand: z.string().optional(),
+  trade_type: z.string().optional(),
+  labels: z.array(z.object({
+    id: z.string(),
+    text: z.string(),
+    type: z.string(),
+  })).optional(),
+  // Vehicle fields for car/boat/mc searches
+  vehicle: z.object({
+    make: z.string().optional(),
+    model: z.string().optional(),
+    year: z.number().optional(),
+    mileage: z.number().optional(),
+    fuel_type: z.string().optional(),
+    transmission: z.string().optional(),
+    color: z.string().optional(),
+  }).optional(),
+});
+
+const BlocketApiResponseSchema = z.object({
+  docs: z.array(BlocketApiListingSchema).default([]),
+  metadata: z.object({
+    paging: z.object({
+      current: z.number().default(1),
+      last: z.number().default(1),
+    }).optional(),
+    num_results: z.number().optional(),
+    result_size: z.object({
+      match_count: z.number().optional(),
+      group_count: z.number().optional(),
+    }).optional(),
+  }).optional(),
+});
+
+// Transform API response to our internal format
+function transformApiResponse(apiResponse: z.infer<typeof BlocketApiResponseSchema>): BlocketSearchResult {
+  return {
+    results: apiResponse.docs.map(doc => ({
+      id: doc.ad_id,
+      subject: doc.heading,
+      body: doc.body,
+      price: doc.price?.amount,
+      price_formatted: doc.price ? `${doc.price.amount} ${doc.price.price_unit}` : undefined,
+      location: doc.location,
+      region: doc.region,
+      published: doc.timestamp ? new Date(doc.timestamp).toISOString() : undefined,
+      ad_type: doc.type,
+      category: doc.type,
+      images: doc.image_urls,
+      url: doc.canonical_url,
+      seller: undefined,
+      vehicle: doc.vehicle,
+    })),
+    pagination: {
+      page: apiResponse.metadata?.paging?.current ?? 1,
+      total_pages: apiResponse.metadata?.paging?.last ?? 1,
+      total_results: apiResponse.metadata?.result_size?.match_count,
+    },
+  };
+}
+
+// Legacy schema for getAd responses (different format)
 const BlocketListingSchema = z.object({
   id: z.union([z.string(), z.number()]).transform(String),
   subject: z.string(),
@@ -64,17 +142,6 @@ const BlocketListingSchema = z.object({
       color: z.string().optional(),
     })
     .optional(),
-});
-
-const BlocketSearchResultSchema = z.object({
-  results: z.array(BlocketListingSchema).default([]),
-  pagination: z
-    .object({
-      page: z.number().default(1),
-      total_pages: z.number().default(1),
-      total_results: z.number().optional(),
-    })
-    .default({ page: 1, total_pages: 1 }),
 });
 
 export interface BlocketClientOptions {
@@ -419,10 +486,10 @@ export class BlocketClient {
       }
 
       const data = await response.json();
-      const validated = BlocketSearchResultSchema.parse(data);
+      const validated = BlocketApiResponseSchema.parse(data);
 
-      // Cast to our interface type
-      return validated as BlocketSearchResult;
+      // Transform API response to our internal format
+      return transformApiResponse(validated);
     } catch (err) {
       clearTimeout(timeoutId);
       if (err instanceof Error && err.name === 'AbortError') {

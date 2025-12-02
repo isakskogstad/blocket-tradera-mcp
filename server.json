@@ -1,0 +1,83 @@
+{
+  "$schema": "https://registry.modelcontextprotocol.io/schemas/server.json",
+  "name": "io.github.isakskogstad/blocket-tradera",
+  "displayName": "Blocket & Tradera",
+  "description": "Search and compare prices across Swedish marketplaces Blocket and Tradera. Browse cars, boats, motorcycles, and general items. Features aggressive caching for Tradera's rate limits.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/isakskogstad/blocket-tradera-mcp"
+  },
+  "homepage": "https://github.com/isakskogstad/blocket-tradera-mcp",
+  "author": {
+    "name": "Isak Skogstad"
+  },
+  "license": "MIT",
+  "categories": ["shopping", "search"],
+  "tags": [
+    "blocket",
+    "tradera",
+    "marketplace",
+    "sweden",
+    "swedish",
+    "auction",
+    "cars",
+    "second-hand",
+    "price-comparison"
+  ],
+  "installations": {
+    "npm": {
+      "type": "npm",
+      "package": "@isakskogstad/blocket-tradera-mcp",
+      "command": {
+        "name": "npx",
+        "args": ["-y", "@isakskogstad/blocket-tradera-mcp"]
+      }
+    },
+    "remote": {
+      "type": "http",
+      "deploymentUrl": "https://blocket-tradera-mcp.onrender.com/mcp"
+    }
+  },
+  "tools": [
+    {
+      "name": "marketplace_search",
+      "description": "Search across both Blocket and Tradera simultaneously"
+    },
+    {
+      "name": "blocket_search",
+      "description": "Search Blocket for general items"
+    },
+    {
+      "name": "blocket_search_cars",
+      "description": "Search cars with vehicle-specific filters"
+    },
+    {
+      "name": "blocket_search_boats",
+      "description": "Search boats"
+    },
+    {
+      "name": "blocket_search_mc",
+      "description": "Search motorcycles"
+    },
+    {
+      "name": "tradera_search",
+      "description": "Search Tradera auctions (cached, 100 calls/day limit)"
+    },
+    {
+      "name": "get_listing_details",
+      "description": "Get full details for a specific listing"
+    },
+    {
+      "name": "compare_prices",
+      "description": "Compare prices across both platforms"
+    },
+    {
+      "name": "get_categories",
+      "description": "List available categories"
+    },
+    {
+      "name": "get_regions",
+      "description": "List Swedish regions"
+    }
+  ]
+}

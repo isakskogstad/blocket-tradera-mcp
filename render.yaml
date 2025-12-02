@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: blocket-tradera-mcp
+    runtime: node
+    region: frankfurt
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start:http
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "10000"
+      - key: CACHE_DIR
+        value: /tmp/blocket-tradera-cache
+      - key: TRADERA_APP_ID
+        sync: false
+      - key: TRADERA_APP_KEY
+        sync: false

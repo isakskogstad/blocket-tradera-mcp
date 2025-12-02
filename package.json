@@ -1,0 +1,67 @@
+{
+  "name": "@isakskogstad/blocket-tradera-mcp",
+  "version": "1.0.0",
+  "description": "MCP server for Swedish marketplaces Blocket and Tradera - search, compare prices, and browse listings",
+  "mcpName": "io.github.isakskogstad/blocket-tradera",
+  "main": "build/index.js",
+  "types": "build/index.d.ts",
+  "type": "module",
+  "bin": {
+    "blocket-tradera-mcp": "./build/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node build/index.js",
+    "start:http": "node build/http-server.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint src --ext .ts",
+    "clean": "rm -rf build",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "blocket",
+    "tradera",
+    "marketplace",
+    "sweden",
+    "swedish",
+    "classifieds",
+    "auction",
+    "second-hand"
+  ],
+  "author": "Isak Skogstad",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/isakskogstad/blocket-tradera-mcp"
+  },
+  "bugs": {
+    "url": "https://github.com/isakskogstad/blocket-tradera-mcp/issues"
+  },
+  "homepage": "https://github.com/isakskogstad/blocket-tradera-mcp#readme",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "express": "^4.21.0",
+    "marked": "^15.0.0",
+    "soap": "^1.1.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  },
+  "files": [
+    "build",
+    "README.md",
+    "README.en.md",
+    "server.json"
+  ]
+}

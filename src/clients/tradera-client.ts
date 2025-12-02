@@ -48,9 +48,11 @@ export class TraderaClient {
   };
 
   constructor(options: TraderaClientOptions = {}) {
+    // Use environment variables or provided options
+    // Default credentials are for development only
     this.auth = {
       appId: options.appId ?? parseInt(process.env.TRADERA_APP_ID ?? '5572'),
-      appKey: options.appKey ?? process.env.TRADERA_APP_KEY ?? '',
+      appKey: options.appKey ?? process.env.TRADERA_APP_KEY ?? '81974dd3-404d-456e-b050-b030ba646d6a',
     };
     this.cache = options.cacheManager ?? getCacheManager();
   }

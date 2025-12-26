@@ -32,6 +32,8 @@ const HOMEPAGE_MD = `
 
 Swedish marketplace integration for Claude and other AI assistants.
 
+**Version 1.1.0** | [GitHub](https://github.com/isakskogstad/blocket-tradera-mcp) | [npm](https://www.npmjs.com/package/blocket-tradera-mcp)
+
 ## Available Tools (10)
 
 | Tool | Description |
@@ -46,6 +48,22 @@ Swedish marketplace integration for Claude and other AI assistants.
 | \`compare_prices\` | Compare prices across platforms |
 | \`get_categories\` | List available categories |
 | \`get_regions\` | List Swedish regions |
+
+## Tradera REST API v3 Fields
+
+Since v1.1.0, the server uses Tradera REST API v3 with extended fields:
+
+| Field | Description |
+|-------|-------------|
+| \`nextBid\` | Next bid amount |
+| \`bidCount\` | Number of bids |
+| \`sellerRating\` | Seller's DSR rating |
+| \`sellerCity\` | Seller's city |
+| \`shippingOptions\` | Shipping options with prices |
+| \`brand\` | Brand (mobile/electronics) |
+| \`model\` | Model |
+| \`storage\` | Storage capacity |
+| \`condition\` | Condition (Unused, Very good, etc) |
 
 ## Usage
 
@@ -77,22 +95,22 @@ Add to your \`claude_desktop_config.json\`:
 }
 \`\`\`
 
-## Important Notes
+## Rate Limits
 
-- **Tradera Rate Limit**: Tradera allows only 100 API calls per 24 hours. Results are aggressively cached.
-- **Blocket Rate Limit**: 5 requests per second.
-- **Swedish Terms**: Swedish search terms work best (e.g., "Soffa", "Cykel", "Bil").
+| Platform | Limit | Caching |
+|----------|-------|---------|
+| **Blocket** | 5 req/sec | 5 min |
+| **Tradera** | 100 req/24h | 30 min |
+
+- Search results cached for 30 minutes
+- Categories cached for 24 hours
+- Regions cached for 7 days
 
 ## Endpoints
 
 - \`GET /\` - This page
-- \`GET /health\` - Health check
+- \`GET /health\` - Health check with API budget
 - \`POST /mcp\` - MCP protocol endpoint
-
-## Links
-
-- [GitHub Repository](https://github.com/isakskogstad/blocket-tradera-mcp)
-- [npm Package](https://www.npmjs.com/package/@isakskogstad/blocket-tradera-mcp)
 
 ---
 
@@ -164,7 +182,7 @@ app.get('/health', (_req: Request, res: Response) => {
   res.json({
     status: 'ok',
     server: 'blocket-tradera-mcp',
-    version: '1.0.0',
+    version: '1.1.0',
     tools_count: 10,
     tradera_api_budget: {
       remaining: budget.remaining,
@@ -184,7 +202,7 @@ function createMCPServer(): Server {
   const server = new Server(
     {
       name: 'blocket-tradera-mcp',
-      version: '1.0.0',
+      version: '1.1.0',
     },
     {
       capabilities: {

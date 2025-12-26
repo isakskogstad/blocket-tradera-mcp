@@ -25,7 +25,7 @@ import { handleToolCall } from './tools/tool-handlers.js';
 const server = new Server(
   {
     name: 'blocket-tradera-mcp',
-    version: '1.0.0',
+    version: '1.1.0',
   },
   {
     capabilities: {

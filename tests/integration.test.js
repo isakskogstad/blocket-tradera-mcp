@@ -2,7 +2,7 @@
  * Final comprehensive test with correct tool names
  */
 
-import { handleToolCall } from './build/tools/tool-handlers.js';
+import { handleToolCall } from '../build/tools/tool-handlers.js';
 
 async function parseResult(result) {
   if (result.isError) {

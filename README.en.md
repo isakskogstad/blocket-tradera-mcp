@@ -1,5 +1,8 @@
 # Blocket & Tradera MCP Server
 
+[![CI](https://github.com/isakskogstad/blocket-tradera-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/isakskogstad/blocket-tradera-mcp/actions/workflows/ci.yml)
+[![npm version](https://badge.fury.io/js/blocket-tradera-mcp.svg)](https://www.npmjs.com/package/blocket-tradera-mcp)
+
 MCP server for Swedish marketplaces Blocket and Tradera. Search for products, compare prices, and browse listings directly from Claude.
 
 [Svenska dokumentation](README.md)
@@ -11,6 +14,7 @@ MCP server for Swedish marketplaces Blocket and Tradera. Search for products, co
 - **Aggressive caching** - handles Tradera's 100 calls/day limit
 - **Vehicle-specific searches** - cars, boats, motorcycles
 - **Price comparison** - compare prices between platforms
+- **Tradera REST API v3** - support for new fields (see below)
 
 ## Installation
 
@@ -76,6 +80,22 @@ Use blocket_search_cars to find a Volvo from 2018 or newer, max 100000 km
 ```
 Use compare_prices to compare prices on "iPhone 14" between Blocket and Tradera
 ```
+
+## Tradera Fields (REST API v3)
+
+Since v1.1.0, the server uses Tradera REST API v3 which provides access to more fields:
+
+| Field | Description |
+|-------|-------------|
+| `nextBid` | Next bid amount |
+| `bidCount` | Number of bids |
+| `sellerRating` | Seller's DSR rating |
+| `sellerCity` | Seller's city |
+| `shippingOptions` | Shipping options with prices |
+| `brand` | Brand (mobile/electronics) |
+| `model` | Model |
+| `storage` | Storage capacity |
+| `condition` | Condition (Unused, Very good, etc) |
 
 ## Rate Limits
 

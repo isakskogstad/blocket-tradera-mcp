@@ -4,7 +4,7 @@
 MCP server for Swedish marketplaces Blocket and Tradera. Enables AI assistants to search listings, compare prices, browse categories, and interact with both platforms through 10 specialized tools.
 
 ## Status
-- **Version:** 1.0.0
+- **Version:** 1.1.0
 - **npm:** `blocket-tradera-mcp`
 - **GitHub:** https://github.com/isakskogstad/blocket-tradera-mcp
 - **Live URL:** https://blocket-tradera-mcp.onrender.com

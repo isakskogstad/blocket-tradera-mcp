@@ -51,16 +51,47 @@ function success(data: unknown): ToolResult {
 /**
  * Create an error tool result
  */
-function error(message: string): ToolResult {
+function error(message: string, details?: Record<string, unknown>): ToolResult {
   return {
     content: [
       {
         type: 'text',
-        text: JSON.stringify({ error: message }, null, 2),
+        text: JSON.stringify({ error: message, ...details }, null, 2),
       },
     ],
     isError: true,
   };
+}
+
+/**
+ * Handle rate limit errors with graceful degradation
+ */
+function handleRateLimitError(platform: string, err: unknown): ToolResult {
+  const message = err instanceof Error ? err.message : 'Unknown error';
+
+  if (message.includes('429') || message.includes('rate limit') || message.includes('budget')) {
+    return error(
+      `${platform} rate limit exceeded. Try again later or use cached results.`,
+      {
+        platform,
+        retry_after_seconds: 60,
+        suggestion: 'Use force_refresh: false to get cached results',
+      }
+    );
+  }
+
+  if (message.includes('503') || message.includes('unavailable')) {
+    return error(
+      `${platform} service temporarily unavailable.`,
+      {
+        platform,
+        retry_after_seconds: 30,
+        suggestion: 'Service may be under maintenance. Try again shortly.',
+      }
+    );
+  }
+
+  return error(message);
 }
 
 // ============================================
@@ -226,7 +257,7 @@ export async function handleBlocketSearch(args: {
       ...metadata,
     });
   } catch (err) {
-    return error(err instanceof Error ? err.message : 'Blocket search failed');
+    return handleRateLimitError('Blocket', err);
   }
 }
 
@@ -295,7 +326,7 @@ export async function handleBlocketSearchCars(args: {
       ...metadata,
     });
   } catch (err) {
-    return error(err instanceof Error ? err.message : 'Car search failed');
+    return handleRateLimitError('Blocket', err);
   }
 }
 
@@ -356,7 +387,7 @@ export async function handleBlocketSearchBoats(args: {
       ...metadata,
     });
   } catch (err) {
-    return error(err instanceof Error ? err.message : 'Boat search failed');
+    return handleRateLimitError('Blocket', err);
   }
 }
 
@@ -419,7 +450,7 @@ export async function handleBlocketSearchMc(args: {
       ...metadata,
     });
   } catch (err) {
-    return error(err instanceof Error ? err.message : 'MC search failed');
+    return handleRateLimitError('Blocket', err);
   }
 }
 
@@ -456,8 +487,11 @@ export async function handleTraderaSearch(args: {
       args.force_refresh
     );
 
+    // Normalize results to unified format for consistent API
+    const normalizedResults = tradera.normalizeResults(result);
+
     return success({
-      results: result.items,
+      results: normalizedResults,
       total_count: result.totalCount,
       pagination: {
         page: result.pageNumber,
@@ -469,7 +503,7 @@ export async function handleTraderaSearch(args: {
       api_budget: tradera.getBudget(),
     });
   } catch (err) {
-    return error(err instanceof Error ? err.message : 'Tradera search failed');
+    return handleRateLimitError('Tradera', err);
   }
 }
 
@@ -484,36 +518,45 @@ export async function handleGetListingDetails(args: {
 }): Promise<ToolResult> {
   await ensureInitialized();
 
+  // Strip platform prefix if present (e.g., "blocket:123" -> "123", "tradera:456" -> "456")
+  let listingId = args.listing_id;
+  if (listingId.includes(':')) {
+    listingId = listingId.split(':')[1] ?? listingId;
+  }
+
   if (args.platform === 'blocket') {
     try {
-      const result = await blocket.getAd(args.listing_id, args.ad_type ?? 'RECOMMERCE');
+      const result = await blocket.getAd(listingId, args.ad_type ?? 'RECOMMERCE');
       if (!result) {
         return error(
-          `Listing ${args.listing_id} not found on Blocket. ` +
+          `Listing ${listingId} not found on Blocket. ` +
           `Make sure you're using the correct ad_type (${args.ad_type ?? 'RECOMMERCE'}). ` +
           `If you got this ID from search results, try matching the ad_type to the listing type.`
         );
       }
       return success(result);
     } catch (err) {
-      return error(err instanceof Error ? err.message : 'Failed to get Blocket listing');
+      return handleRateLimitError('Blocket', err);
     }
   } else if (args.platform === 'tradera') {
     try {
-      const itemId = parseInt(args.listing_id, 10);
+      const itemId = parseInt(listingId, 10);
       if (isNaN(itemId)) {
-        return error('Invalid Tradera listing ID (must be a number)');
+        return error('Invalid Tradera listing ID (must be a number)', {
+          provided: args.listing_id,
+          parsed: listingId,
+        });
       }
       const result = await tradera.getItem(itemId);
       if (!result) {
-        return error(`Listing ${args.listing_id} not found on Tradera (or budget exhausted)`);
+        return error(`Listing ${listingId} not found on Tradera (or budget exhausted)`);
       }
       return success({
         ...result,
         api_budget: tradera.getBudget(),
       });
     } catch (err) {
-      return error(err instanceof Error ? err.message : 'Failed to get Tradera listing');
+      return handleRateLimitError('Tradera', err);
     }
   }
 
@@ -538,6 +581,10 @@ export async function handleComparePrices(args: {
     },
   };
 
+  let blocketCount = 0;
+  let traderaCount = 0;
+  const allPricesArray: number[] = [];
+
   // Get Blocket prices
   try {
     const blocketResult = await blocket.search({
@@ -550,6 +597,8 @@ export async function handleComparePrices(args: {
 
     if (prices.length > 0) {
       comparison.results.blocket = calculatePriceStats(prices);
+      blocketCount = prices.length;
+      allPricesArray.push(...prices);
     }
   } catch (err) {
     console.error('Blocket price fetch error:', err);
@@ -565,6 +614,8 @@ export async function handleComparePrices(args: {
 
       if (prices.length > 0) {
         comparison.results.tradera = calculatePriceStats(prices);
+        traderaCount = prices.length;
+        allPricesArray.push(...prices);
       }
     } catch (err) {
       console.error('Tradera price fetch error:', err);
@@ -586,8 +637,25 @@ export async function handleComparePrices(args: {
     comparison.recommendation = `Lowest price found on ${cheapest.platform}: ${cheapest.price} SEK`;
   }
 
+  // Calculate combined price analysis for convenience
+  const totalListings = blocketCount + traderaCount;
+  let priceAnalysis = null;
+  if (allPricesArray.length > 0) {
+    const sorted = [...allPricesArray].sort((a, b) => a - b);
+    const sum = sorted.reduce((a, b) => a + b, 0);
+    const mid = Math.floor(sorted.length / 2);
+    priceAnalysis = {
+      min: sorted[0],
+      max: sorted[sorted.length - 1],
+      average: Math.round(sum / sorted.length),
+      median: sorted.length % 2 ? sorted[mid] : Math.round((sorted[mid - 1] + sorted[mid]) / 2),
+    };
+  }
+
   return success({
     ...comparison,
+    total_listings: totalListings,
+    price_analysis: priceAnalysis,
     tradera_budget: tradera.getBudget(),
   });
 }

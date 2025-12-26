@@ -17,7 +17,6 @@
     "start:http": "node build/http-server.js",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "eslint src --ext .ts",
     "clean": "rm -rf build",
     "prepublishOnly": "npm run build"
   },

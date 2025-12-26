@@ -234,7 +234,8 @@ export async function handleBlocketSearch(args: {
       page: args.page,
     });
 
-    let results = result.results;
+    // Normalize results to unified format for consistent API (title, url, images, etc.)
+    let normalizedResults = blocket.normalizeResults(result);
 
     // Post-filter by municipality if specified
     const metadata: Record<string, unknown> = {
@@ -244,16 +245,16 @@ export async function handleBlocketSearch(args: {
     };
 
     if (args.municipality) {
-      const beforeFilter = results.length;
-      results = results.filter(listing =>
-        matchesMunicipality(listing.location, args.municipality!)
+      const beforeFilter = normalizedResults.length;
+      normalizedResults = normalizedResults.filter(listing =>
+        matchesMunicipality(listing.location.city, args.municipality!)
       );
       metadata.municipality_filter = args.municipality;
-      metadata.filtered_out = beforeFilter - results.length;
+      metadata.filtered_out = beforeFilter - normalizedResults.length;
     }
 
     return success({
-      results,
+      results: normalizedResults,
       ...metadata,
     });
   } catch (err) {
@@ -305,7 +306,8 @@ export async function handleBlocketSearchCars(args: {
       page: args.page,
     });
 
-    let results = result.results;
+    // Normalize results to unified format for consistent API (title, url, images, etc.)
+    let normalizedResults = blocket.normalizeResults(result, 'CAR');
     const metadata: Record<string, unknown> = {
       pagination: result.pagination,
       cached: result.cached,
@@ -313,16 +315,16 @@ export async function handleBlocketSearchCars(args: {
 
     // Post-filter by municipality if specified
     if (args.municipality) {
-      const beforeFilter = results.length;
-      results = results.filter(listing =>
-        matchesMunicipality(listing.location, args.municipality!)
+      const beforeFilter = normalizedResults.length;
+      normalizedResults = normalizedResults.filter(listing =>
+        matchesMunicipality(listing.location.city, args.municipality!)
       );
       metadata.municipality_filter = args.municipality;
-      metadata.filtered_out = beforeFilter - results.length;
+      metadata.filtered_out = beforeFilter - normalizedResults.length;
     }
 
     return success({
-      results,
+      results: normalizedResults,
       ...metadata,
     });
   } catch (err) {
@@ -366,7 +368,8 @@ export async function handleBlocketSearchBoats(args: {
       page: args.page,
     });
 
-    let results = result.results;
+    // Normalize results to unified format for consistent API (title, url, images, etc.)
+    let normalizedResults = blocket.normalizeResults(result, 'BOAT');
     const metadata: Record<string, unknown> = {
       pagination: result.pagination,
       cached: result.cached,
@@ -374,16 +377,16 @@ export async function handleBlocketSearchBoats(args: {
 
     // Post-filter by municipality if specified
     if (args.municipality) {
-      const beforeFilter = results.length;
-      results = results.filter(listing =>
-        matchesMunicipality(listing.location, args.municipality!)
+      const beforeFilter = normalizedResults.length;
+      normalizedResults = normalizedResults.filter(listing =>
+        matchesMunicipality(listing.location.city, args.municipality!)
       );
       metadata.municipality_filter = args.municipality;
-      metadata.filtered_out = beforeFilter - results.length;
+      metadata.filtered_out = beforeFilter - normalizedResults.length;
     }
 
     return success({
-      results,
+      results: normalizedResults,
       ...metadata,
     });
   } catch (err) {
@@ -429,7 +432,8 @@ export async function handleBlocketSearchMc(args: {
       page: args.page,
     });
 
-    let results = result.results;
+    // Normalize results to unified format for consistent API (title, url, images, etc.)
+    let normalizedResults = blocket.normalizeResults(result, 'MC');
     const metadata: Record<string, unknown> = {
       pagination: result.pagination,
       cached: result.cached,
@@ -437,16 +441,16 @@ export async function handleBlocketSearchMc(args: {
 
     // Post-filter by municipality if specified
     if (args.municipality) {
-      const beforeFilter = results.length;
-      results = results.filter(listing =>
-        matchesMunicipality(listing.location, args.municipality!)
+      const beforeFilter = normalizedResults.length;
+      normalizedResults = normalizedResults.filter(listing =>
+        matchesMunicipality(listing.location.city, args.municipality!)
       );
       metadata.municipality_filter = args.municipality;
-      metadata.filtered_out = beforeFilter - results.length;
+      metadata.filtered_out = beforeFilter - normalizedResults.length;
     }
 
     return success({
-      results,
+      results: normalizedResults,
       ...metadata,
     });
   } catch (err) {

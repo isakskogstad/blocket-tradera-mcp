@@ -6,6 +6,7 @@
 import { getBlocketClient } from '../clients/blocket-client.js';
 import { getTraderaClient } from '../clients/tradera-client.js';
 import { getRegionForMunicipality, matchesMunicipality } from '../utils/municipalities.js';
+import { suggestCorrections, generateQueryVariants } from '../utils/fuzzy-search.js';
 import type { Platform, UnifiedListing, PriceStats, PriceComparison } from '../types/unified.js';
 import type { BlocketLocation, BlocketCategory, BlocketSortOrder, BlocketCarSortOrder, BlocketColor } from '../types/blocket.js';
 import type { TraderaOrderBy } from '../types/tradera.js';
@@ -113,11 +114,28 @@ export async function handleMarketplaceSearch(args: {
 
   const platforms = args.platforms ?? ['blocket', 'tradera'];
   const results: UnifiedListing[] = [];
+
+  // Check for typos and suggest corrections
+  const { correctedQuery, suggestions, wasModified } = suggestCorrections(args.query);
+  const queryVariants = generateQueryVariants(args.query);
+
   const metadata: Record<string, unknown> = {
     query: args.query,
     platforms,
     cached: { blocket: false, tradera: false },
   };
+
+  // Add spelling suggestions if query was modified
+  if (wasModified) {
+    metadata.spelling_suggestions = suggestions;
+    metadata.corrected_query = correctedQuery;
+    metadata.note = `Query may contain typos. Suggested: "${correctedQuery}"`;
+  }
+
+  // Add query variants for alternative searches
+  if (queryVariants.length > 1) {
+    metadata.query_variants = queryVariants;
+  }
 
   // If municipality is specified, determine parent region
   let region = args.region;
@@ -568,6 +586,279 @@ export async function handleGetListingDetails(args: {
 }
 
 // ============================================
+// AUCTION MONITORING TOOLS
+// ============================================
+
+interface AuctionStatus {
+  itemId: number;
+  title: string;
+  currentBid: number;
+  nextBid: number;
+  bidCount: number;
+  endDate: string;
+  timeRemaining: {
+    hours: number;
+    minutes: number;
+    seconds: number;
+    isEnded: boolean;
+    urgency: 'critical' | 'high' | 'medium' | 'low' | 'ended';
+  };
+  seller: {
+    alias: string;
+    rating?: number;
+  };
+  recommendedRefreshInterval: number; // in seconds
+}
+
+export async function handleWatchAuction(args: {
+  item_ids: number[];
+}): Promise<ToolResult> {
+  await ensureInitialized();
+
+  if (!args.item_ids || args.item_ids.length === 0) {
+    return error('No item IDs provided');
+  }
+
+  if (args.item_ids.length > 5) {
+    return error('Maximum 5 items per watch request');
+  }
+
+  // Check budget
+  const budget = tradera.getBudget();
+  if (budget.remaining < args.item_ids.length) {
+    return error(
+      `Insufficient API budget. Need ${args.item_ids.length} calls but only ${budget.remaining} remaining.`,
+      { budget }
+    );
+  }
+
+  const now = new Date();
+  const statuses: AuctionStatus[] = [];
+
+  // Fetch all items in parallel
+  const itemPromises = args.item_ids.map(async (itemId): Promise<AuctionStatus | null> => {
+    try {
+      const item = await tradera.getItem(itemId);
+      if (!item) return null;
+
+      // Calculate time remaining
+      const endDate = new Date(item.endDate);
+      const diffMs = endDate.getTime() - now.getTime();
+      const isEnded = diffMs <= 0;
+
+      const hours = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60)));
+      const minutes = Math.max(0, Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60)));
+      const seconds = Math.max(0, Math.floor((diffMs % (1000 * 60)) / 1000));
+
+      // Determine urgency level
+      let urgency: AuctionStatus['timeRemaining']['urgency'];
+      if (isEnded) {
+        urgency = 'ended';
+      } else if (diffMs < 5 * 60 * 1000) { // < 5 min
+        urgency = 'critical';
+      } else if (diffMs < 30 * 60 * 1000) { // < 30 min
+        urgency = 'high';
+      } else if (diffMs < 2 * 60 * 60 * 1000) { // < 2 hours
+        urgency = 'medium';
+      } else {
+        urgency = 'low';
+      }
+
+      // Recommend refresh interval based on urgency
+      let recommendedRefreshInterval: number;
+      switch (urgency) {
+        case 'critical': recommendedRefreshInterval = 30; break;
+        case 'high': recommendedRefreshInterval = 60; break;
+        case 'medium': recommendedRefreshInterval = 300; break;
+        case 'low': recommendedRefreshInterval = 900; break;
+        default: recommendedRefreshInterval = 0;
+      }
+
+      return {
+        itemId: item.itemId,
+        title: item.shortDescription,
+        currentBid: item.currentBid ?? item.startPrice ?? 0,
+        nextBid: item.nextBid ?? (item.currentBid ?? item.startPrice ?? 0) + 1,
+        bidCount: item.bidCount ?? 0,
+        endDate: item.endDate,
+        timeRemaining: {
+          hours,
+          minutes,
+          seconds,
+          isEnded,
+          urgency,
+        },
+        seller: {
+          alias: item.sellerAlias ?? 'Unknown',
+          rating: item.sellerRating,
+        },
+        recommendedRefreshInterval,
+      };
+    } catch (err) {
+      console.error(`Failed to fetch item ${itemId}:`, err);
+      return null;
+    }
+  });
+
+  const results = await Promise.all(itemPromises);
+
+  for (const result of results) {
+    if (result) {
+      statuses.push(result);
+    }
+  }
+
+  // Calculate overall recommended refresh interval (use the shortest)
+  const minRefresh = statuses.reduce((min, s) =>
+    s.recommendedRefreshInterval > 0 && s.recommendedRefreshInterval < min
+      ? s.recommendedRefreshInterval
+      : min,
+    Infinity
+  );
+
+  return success({
+    auctions: statuses,
+    fetched_at: now.toISOString(),
+    items_requested: args.item_ids.length,
+    items_found: statuses.length,
+    overall_recommended_refresh_seconds: minRefresh === Infinity ? 900 : minRefresh,
+    api_budget: tradera.getBudget(),
+    note: statuses.some(s => s.timeRemaining.urgency === 'critical')
+      ? '⚠️ Some auctions ending soon!'
+      : undefined,
+  });
+}
+
+// ============================================
+// BATCH TOOLS
+// ============================================
+
+interface BatchListingRequest {
+  platform: Platform;
+  listing_id: string;
+  ad_type?: 'RECOMMERCE' | 'CAR' | 'BOAT' | 'MC';
+}
+
+interface BatchListingResult {
+  platform: Platform;
+  listing_id: string;
+  success: boolean;
+  data?: unknown;
+  error?: string;
+}
+
+export async function handleGetListingsBatch(args: {
+  listings: BatchListingRequest[];
+}): Promise<ToolResult> {
+  await ensureInitialized();
+
+  if (!args.listings || args.listings.length === 0) {
+    return error('No listings provided');
+  }
+
+  if (args.listings.length > 20) {
+    return error('Maximum 20 listings per batch request');
+  }
+
+  const startTime = Date.now();
+
+  // Count Tradera listings to check budget
+  const traderaListings = args.listings.filter(l => l.platform === 'tradera');
+
+  // Check Tradera budget before making calls
+  if (traderaListings.length > 0) {
+    const budget = tradera.getBudget();
+    if (budget.remaining < traderaListings.length) {
+      return error(
+        `Insufficient Tradera API budget. Need ${traderaListings.length} calls but only ${budget.remaining} remaining.`,
+        { budget, requested: traderaListings.length }
+      );
+    }
+  }
+
+  // Process all listings in parallel for speed
+  const allPromises = args.listings.map(async (listing): Promise<BatchListingResult> => {
+    try {
+      // Strip platform prefix if present
+      let listingId = listing.listing_id;
+      if (listingId.includes(':')) {
+        listingId = listingId.split(':')[1] ?? listingId;
+      }
+
+      if (listing.platform === 'blocket') {
+        const data = await blocket.getAd(listingId, listing.ad_type ?? 'RECOMMERCE');
+        if (!data) {
+          return {
+            platform: listing.platform,
+            listing_id: listing.listing_id,
+            success: false,
+            error: 'Listing not found',
+          };
+        }
+        return {
+          platform: listing.platform,
+          listing_id: listing.listing_id,
+          success: true,
+          data,
+        };
+      } else if (listing.platform === 'tradera') {
+        const itemId = parseInt(listingId, 10);
+        if (isNaN(itemId)) {
+          return {
+            platform: listing.platform,
+            listing_id: listing.listing_id,
+            success: false,
+            error: 'Invalid Tradera listing ID (must be a number)',
+          };
+        }
+        const data = await tradera.getItem(itemId);
+        if (!data) {
+          return {
+            platform: listing.platform,
+            listing_id: listing.listing_id,
+            success: false,
+            error: 'Listing not found',
+          };
+        }
+        return {
+          platform: listing.platform,
+          listing_id: listing.listing_id,
+          success: true,
+          data,
+        };
+      } else {
+        return {
+          platform: listing.platform,
+          listing_id: listing.listing_id,
+          success: false,
+          error: 'Invalid platform',
+        };
+      }
+    } catch (err) {
+      return {
+        platform: listing.platform,
+        listing_id: listing.listing_id,
+        success: false,
+        error: err instanceof Error ? err.message : 'Unknown error',
+      };
+    }
+  });
+
+  const batchResults = await Promise.all(allPromises);
+
+  return success({
+    results: batchResults,
+    summary: {
+      total: args.listings.length,
+      successful: batchResults.filter(r => r.success).length,
+      failed: batchResults.filter(r => !r.success).length,
+      processing_time_ms: Date.now() - startTime,
+    },
+    tradera_budget: tradera.getBudget(),
+  });
+}
+
+// ============================================
 // COMPARISON TOOLS
 // ============================================
 
@@ -805,6 +1096,10 @@ export async function handleToolCall(
       return handleTraderaSearch(args as Parameters<typeof handleTraderaSearch>[0]);
     case 'get_listing_details':
       return handleGetListingDetails(args as Parameters<typeof handleGetListingDetails>[0]);
+    case 'watch_auction':
+      return handleWatchAuction(args as Parameters<typeof handleWatchAuction>[0]);
+    case 'get_listings_batch':
+      return handleGetListingsBatch(args as Parameters<typeof handleGetListingsBatch>[0]);
     case 'compare_prices':
       return handleComparePrices(args as Parameters<typeof handleComparePrices>[0]);
     case 'get_categories':

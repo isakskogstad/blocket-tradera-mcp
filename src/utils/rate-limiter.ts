@@ -130,3 +130,183 @@ export function createTraderaRateLimiter(): RateLimiter {
     name: 'Tradera',
   });
 }
+
+// ============================================
+// EXPONENTIAL BACKOFF WITH RETRY
+// ============================================
+
+export interface RetryConfig {
+  /** Maximum number of retry attempts */
+  maxRetries: number;
+  /** Initial delay in milliseconds */
+  initialDelayMs: number;
+  /** Maximum delay in milliseconds */
+  maxDelayMs: number;
+  /** Multiplier for each retry (default: 2) */
+  backoffMultiplier?: number;
+  /** Add randomness to prevent thundering herd (default: true) */
+  jitter?: boolean;
+  /** Name for logging */
+  name?: string;
+  /** HTTP status codes that should trigger a retry */
+  retryableStatusCodes?: number[];
+}
+
+export interface RetryResult<T> {
+  success: boolean;
+  data?: T;
+  error?: Error;
+  attempts: number;
+  totalDelayMs: number;
+}
+
+/**
+ * Retry with exponential backoff
+ * Handles rate limits and transient failures gracefully
+ */
+export class RetryWithBackoff {
+  private readonly config: Required<RetryConfig>;
+
+  constructor(config: RetryConfig) {
+    this.config = {
+      ...config,
+      backoffMultiplier: config.backoffMultiplier ?? 2,
+      jitter: config.jitter ?? true,
+      name: config.name ?? 'Retry',
+      retryableStatusCodes: config.retryableStatusCodes ?? [429, 500, 502, 503, 504],
+    };
+  }
+
+  /**
+   * Execute a function with retry logic
+   */
+  async execute<T>(fn: () => Promise<T>): Promise<RetryResult<T>> {
+    let attempts = 0;
+    let totalDelayMs = 0;
+    let lastError: Error | undefined;
+
+    while (attempts <= this.config.maxRetries) {
+      try {
+        const result = await fn();
+        return {
+          success: true,
+          data: result,
+          attempts: attempts + 1,
+          totalDelayMs,
+        };
+      } catch (err) {
+        lastError = err instanceof Error ? err : new Error(String(err));
+        attempts++;
+
+        // Check if we should retry
+        if (attempts > this.config.maxRetries) {
+          break;
+        }
+
+        // Check if the error is retryable
+        if (!this.isRetryable(lastError)) {
+          break;
+        }
+
+        // Calculate delay with exponential backoff
+        const delay = this.calculateDelay(attempts);
+        totalDelayMs += delay;
+
+        console.error(
+          `[${this.config.name}] Attempt ${attempts}/${this.config.maxRetries + 1} failed: ${lastError.message}. Retrying in ${delay}ms...`
+        );
+
+        await this.sleep(delay);
+      }
+    }
+
+    return {
+      success: false,
+      error: lastError,
+      attempts,
+      totalDelayMs,
+    };
+  }
+
+  /**
+   * Check if an error is retryable
+   */
+  private isRetryable(error: Error): boolean {
+    const message = error.message.toLowerCase();
+
+    // Check for rate limit indicators
+    if (message.includes('rate limit') || message.includes('too many requests')) {
+      return true;
+    }
+
+    // Check for network errors
+    if (
+      message.includes('network') ||
+      message.includes('timeout') ||
+      message.includes('econnreset') ||
+      message.includes('enotfound')
+    ) {
+      return true;
+    }
+
+    // Check for HTTP status codes in error message
+    for (const code of this.config.retryableStatusCodes) {
+      if (message.includes(String(code))) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /**
+   * Calculate delay with exponential backoff and optional jitter
+   */
+  private calculateDelay(attempt: number): number {
+    // Exponential: initialDelay * multiplier^(attempt-1)
+    let delay = this.config.initialDelayMs * Math.pow(this.config.backoffMultiplier, attempt - 1);
+
+    // Cap at maxDelay
+    delay = Math.min(delay, this.config.maxDelayMs);
+
+    // Add jitter (±25%)
+    if (this.config.jitter) {
+      const jitterFactor = 0.75 + Math.random() * 0.5; // 0.75 to 1.25
+      delay = Math.round(delay * jitterFactor);
+    }
+
+    return delay;
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+}
+
+/**
+ * Create a retry handler for Blocket API
+ * - Short delays since rate limit is per-second
+ * - Max 3 retries
+ */
+export function createBlocketRetry(): RetryWithBackoff {
+  return new RetryWithBackoff({
+    maxRetries: 3,
+    initialDelayMs: 200,
+    maxDelayMs: 2000,
+    name: 'Blocket',
+  });
+}
+
+/**
+ * Create a retry handler for Tradera API
+ * - Longer delays since rate limit is daily
+ * - Fewer retries to conserve API budget
+ */
+export function createTraderaRetry(): RetryWithBackoff {
+  return new RetryWithBackoff({
+    maxRetries: 2,
+    initialDelayMs: 1000,
+    maxDelayMs: 5000,
+    name: 'Tradera',
+  });
+}

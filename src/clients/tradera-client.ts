@@ -9,6 +9,7 @@
 import { parseStringPromise } from 'xml2js';
 import { CacheManager, getCacheManager, CacheTTL } from '../cache/cache-manager.js';
 import { normalizeTraderaItem } from '../utils/normalizer.js';
+import { RetryWithBackoff, createTraderaRetry } from '../utils/rate-limiter.js';
 import type {
   TraderaAuth,
   TraderaApiBudget,
@@ -40,6 +41,7 @@ export interface TraderaClientOptions {
 export class TraderaClient {
   private readonly auth: TraderaAuth;
   private readonly cache: CacheManager;
+  private readonly retry: RetryWithBackoff;
 
   // API Budget tracking (100 calls/24h)
   private budget: TraderaApiBudget = {
@@ -57,6 +59,31 @@ export class TraderaClient {
       appKey: options.appKey ?? process.env.TRADERA_APP_KEY ?? '81974dd3-404d-456e-b050-b030ba646d6a',
     };
     this.cache = options.cacheManager ?? getCacheManager();
+    this.retry = createTraderaRetry();
+  }
+
+  /**
+   * Fetch with retry logic for transient errors
+   * Note: Tradera has limited daily budget, so we only retry on network/server errors
+   */
+  private async fetchWithRetry(url: URL): Promise<Response> {
+    const result = await this.retry.execute(async () => {
+      // Use native fetch, not this.fetchWithRetry (that would be infinite recursion!)
+      const response = await fetch(url.toString());
+
+      // Only throw on retryable errors (5xx, network issues)
+      if (!response.ok && response.status >= 500) {
+        throw new Error(`Tradera API returned ${response.status}: ${response.statusText}`);
+      }
+
+      return response;
+    });
+
+    if (!result.success) {
+      throw result.error ?? new Error('Request failed after retries');
+    }
+
+    return result.data!;
   }
 
   /**
@@ -129,7 +156,7 @@ export class TraderaClient {
       url.searchParams.append('appId', String(this.auth.appId));
       url.searchParams.append('appKey', this.auth.appKey);
 
-      const response = await fetch(url.toString());
+      const response = await this.fetchWithRetry(url);
 
       if (!response.ok) {
         throw new Error(`Tradera API returned ${response.status}: ${response.statusText}`);
@@ -186,7 +213,7 @@ export class TraderaClient {
       url.searchParams.append('appId', String(this.auth.appId));
       url.searchParams.append('appKey', this.auth.appKey);
 
-      const response = await fetch(url.toString());
+      const response = await this.fetchWithRetry(url);
 
       if (!response.ok) {
         throw new Error(`Tradera API returned ${response.status}: ${response.statusText}`);
@@ -233,7 +260,7 @@ export class TraderaClient {
       url.searchParams.append('appId', String(this.auth.appId));
       url.searchParams.append('appKey', this.auth.appKey);
 
-      const response = await fetch(url.toString());
+      const response = await this.fetchWithRetry(url);
 
       if (!response.ok) {
         throw new Error(`Tradera API returned ${response.status}: ${response.statusText}`);
@@ -275,7 +302,7 @@ export class TraderaClient {
       url.searchParams.append('appId', String(this.auth.appId));
       url.searchParams.append('appKey', this.auth.appKey);
 
-      const response = await fetch(url.toString());
+      const response = await this.fetchWithRetry(url);
 
       if (!response.ok) {
         throw new Error(`Tradera API returned ${response.status}: ${response.statusText}`);
@@ -317,7 +344,7 @@ export class TraderaClient {
       url.searchParams.append('appId', String(this.auth.appId));
       url.searchParams.append('appKey', this.auth.appKey);
 
-      const response = await fetch(url.toString());
+      const response = await this.fetchWithRetry(url);
 
       if (!response.ok) {
         throw new Error(`Tradera API returned ${response.status}: ${response.statusText}`);

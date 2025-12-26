@@ -25,7 +25,7 @@ import { handleToolCall } from './tools/tool-handlers.js';
 const server = new Server(
   {
     name: 'blocket-tradera-mcp',
-    version: '1.1.0',
+    version: '1.2.0',
   },
   {
     capabilities: {
@@ -74,12 +74,13 @@ async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error('Blocket & Tradera MCP Server started');
-  console.error('Available tools: 10');
-  console.error('- marketplace_search (unified)');
+  console.error('Available tools: 12');
+  console.error('- marketplace_search (unified, fuzzy search)');
   console.error('- blocket_search, blocket_search_cars, blocket_search_boats, blocket_search_mc');
   console.error('- tradera_search (cached, 100 calls/day limit)');
-  console.error('- get_listing_details, compare_prices');
-  console.error('- get_categories, get_regions');
+  console.error('- get_listing_details, get_listings_batch');
+  console.error('- watch_auction (real-time auction monitoring)');
+  console.error('- compare_prices, get_categories, get_regions');
 }
 
 main().catch((error) => {

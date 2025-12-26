@@ -36,8 +36,15 @@ export interface UnifiedListing {
     buyNowPrice?: number;
   };
 
-  /** Image URLs */
+  /** Image URLs (full resolution) */
   images: string[];
+
+  /** Thumbnail URLs (optimized for fast loading) */
+  thumbnails?: {
+    small?: string;   // ~100px - for list views
+    medium?: string;  // ~300px - for grid views
+    large?: string;   // ~600px - for previews
+  };
 
   /** Location information */
   location: {

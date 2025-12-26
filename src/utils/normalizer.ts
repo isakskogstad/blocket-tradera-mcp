@@ -12,6 +12,45 @@ import type { TraderaItem } from '../types/tradera.js';
 import type { UnifiedListing } from '../types/unified.js';
 
 /**
+ * Generate thumbnail URLs from a source image URL
+ * Uses CDN parameters where supported, otherwise returns the original
+ */
+function generateThumbnails(images: string[]): UnifiedListing['thumbnails'] {
+  if (!images || images.length === 0) return undefined;
+
+  const firstImage = images[0];
+  if (!firstImage) return undefined;
+
+  // Blocket images: images.blocket.se supports resizing via path
+  // Format: /original/hash.jpg -> /100x100/hash.jpg
+  if (firstImage.includes('images.blocket.se')) {
+    return {
+      small: firstImage.replace('/original/', '/100x100/').replace('/large/', '/100x100/'),
+      medium: firstImage.replace('/original/', '/300x300/').replace('/large/', '/300x300/'),
+      large: firstImage.replace('/original/', '/600x600/').replace('/large/', '/600x600/'),
+    };
+  }
+
+  // Tradera images: img.tradera.net supports resizing via query params
+  // Format: /images/xxx.jpg -> /images/xxx.jpg?width=100
+  if (firstImage.includes('tradera.net') || firstImage.includes('tradera.com')) {
+    const baseUrl = firstImage.split('?')[0];
+    return {
+      small: `${baseUrl}?width=100&height=100&fit=crop`,
+      medium: `${baseUrl}?width=300&height=300&fit=crop`,
+      large: `${baseUrl}?width=600&height=600&fit=crop`,
+    };
+  }
+
+  // Fallback: use the first image as-is for all sizes
+  return {
+    small: firstImage,
+    medium: firstImage,
+    large: firstImage,
+  };
+}
+
+/**
  * Normalize a Blocket listing to unified format
  */
 export function normalizeBlocketListing(
@@ -20,6 +59,7 @@ export function normalizeBlocketListing(
 ): UnifiedListing {
   const id = `blocket:${listing.id}`;
   const price = parseBlocketPrice(listing.price_formatted ?? listing.price?.toString());
+  const images = listing.images ?? [];
 
   return {
     id,
@@ -32,7 +72,8 @@ export function normalizeBlocketListing(
       currency: 'SEK',
       type: 'fixed',
     },
-    images: listing.images ?? [],
+    images,
+    thumbnails: generateThumbnails(images),
     location: {
       region: listing.region ?? listing.location ?? 'Unknown',
       city: listing.location,
@@ -96,6 +137,9 @@ export function normalizeTraderaItem(item: TraderaItem): UnifiedListing {
   const conditionFromAttributes = mapCondition(item.attributes?.condition);
   const finalCondition = conditionFromAttributes ?? item.condition ?? 'used';
 
+  // Collect images from various sources
+  const images = item.imageUrls ?? (item.thumbnailUrl ? [item.thumbnailUrl] : []);
+
   return {
     id,
     platform: 'tradera',
@@ -109,7 +153,8 @@ export function normalizeTraderaItem(item: TraderaItem): UnifiedListing {
       currentBid: item.currentBid,
       buyNowPrice: item.buyItNowPrice,
     },
-    images: item.imageUrls ?? (item.thumbnailUrl ? [item.thumbnailUrl] : []),
+    images,
+    thumbnails: generateThumbnails(images),
     location: {
       region: 'Sweden', // Tradera doesn't always provide location
       city: item.sellerCity,

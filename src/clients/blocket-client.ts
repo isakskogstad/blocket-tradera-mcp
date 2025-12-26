@@ -9,7 +9,9 @@
 import { z } from 'zod';
 import {
   RateLimiter,
+  RetryWithBackoff,
   createBlocketRateLimiter,
+  createBlocketRetry,
 } from '../utils/rate-limiter.js';
 import { CacheManager, getCacheManager } from '../cache/cache-manager.js';
 import {
@@ -154,11 +156,13 @@ export interface BlocketClientOptions {
 export class BlocketClient {
   private readonly baseUrl: string;
   private readonly rateLimiter: RateLimiter;
+  private readonly retry: RetryWithBackoff;
   private readonly cache: CacheManager;
 
   constructor(options: BlocketClientOptions = {}) {
     this.baseUrl = options.baseUrl ?? 'https://blocket-api.se/v1';
     this.rateLimiter = createBlocketRateLimiter();
+    this.retry = createBlocketRetry();
     this.cache = options.cacheManager ?? getCacheManager();
   }
 
@@ -479,7 +483,7 @@ export class BlocketClient {
   }
 
   /**
-   * Internal fetch with rate limiting and validation
+   * Internal fetch with rate limiting, retry with backoff, and validation
    */
   private async fetchAndValidate(endpoint: string): Promise<BlocketSearchResult> {
     await this.rateLimiter.throttle();
@@ -487,43 +491,52 @@ export class BlocketClient {
     const url = `${this.baseUrl}${endpoint}`;
     console.error(`[BlocketClient] Fetching: ${url}`);
 
-    // Request timeout (30 seconds)
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000);
+    // Wrap the fetch in retry logic with exponential backoff
+    const result = await this.retry.execute(async () => {
+      // Request timeout (30 seconds)
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
 
-    try {
-      const response = await fetch(url, {
-        headers: {
-          Accept: 'application/json',
-          'User-Agent': 'BlocketTraderaMCP/1.0',
-        },
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
+      try {
+        const response = await fetch(url, {
+          headers: {
+            Accept: 'application/json',
+            'User-Agent': 'BlocketTraderaMCP/1.1',
+          },
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
 
-      if (!response.ok) {
-        if (response.status === 429) {
-          throw new Error('Rate limit exceeded');
+        if (!response.ok) {
+          if (response.status === 429) {
+            throw new Error('Rate limit exceeded (429)');
+          }
+          if (response.status === 422) {
+            const error = await response.json();
+            throw new Error(`Validation error: ${JSON.stringify(error)}`);
+          }
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
-        if (response.status === 422) {
-          const error = await response.json();
-          throw new Error(`Validation error: ${JSON.stringify(error)}`);
+
+        const data = await response.json();
+        const validated = BlocketApiResponseSchema.parse(data);
+
+        // Transform API response to our internal format
+        return transformApiResponse(validated);
+      } catch (err) {
+        clearTimeout(timeoutId);
+        if (err instanceof Error && err.name === 'AbortError') {
+          throw new Error('Request timeout after 30 seconds');
         }
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        throw err;
       }
+    });
 
-      const data = await response.json();
-      const validated = BlocketApiResponseSchema.parse(data);
-
-      // Transform API response to our internal format
-      return transformApiResponse(validated);
-    } catch (err) {
-      clearTimeout(timeoutId);
-      if (err instanceof Error && err.name === 'AbortError') {
-        throw new Error('Request timeout after 30 seconds');
-      }
-      throw err;
+    if (!result.success) {
+      throw result.error ?? new Error('Request failed after retries');
     }
+
+    return result.data!;
   }
 }
 

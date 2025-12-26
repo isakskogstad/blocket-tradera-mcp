@@ -504,6 +504,72 @@ export const toolDefinitions: Tool[] = [
   },
 
   // ============================================
+  // AUCTION MONITORING TOOLS
+  // ============================================
+  {
+    name: 'watch_auction',
+    description:
+      'Get real-time auction status for Tradera items. Returns current bid, time remaining, ' +
+      'bid history, and recommended refresh interval. Useful for monitoring auctions you want to bid on. ' +
+      'NOTE: Each call uses 1 API credit. Consider the 100/day limit.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        item_ids: {
+          type: 'array',
+          items: { type: 'number' },
+          description: 'Tradera item IDs to monitor (max 5)',
+          maxItems: 5,
+        },
+      },
+      required: ['item_ids'],
+    },
+  },
+
+  // ============================================
+  // BATCH TOOLS
+  // ============================================
+  {
+    name: 'get_listings_batch',
+    description:
+      'Fetch details for multiple listings at once. More efficient than calling get_listing_details ' +
+      'repeatedly. Supports mixed platforms (both Blocket and Tradera in one call). ' +
+      'Returns results in the same order as requested. ' +
+      'NOTE: Tradera calls count towards the 100/day limit.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        listings: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              platform: {
+                type: 'string',
+                enum: ['blocket', 'tradera'],
+                description: 'Which platform the listing is from',
+              },
+              listing_id: {
+                type: 'string',
+                description: 'The listing ID',
+              },
+              ad_type: {
+                type: 'string',
+                enum: ['RECOMMERCE', 'CAR', 'BOAT', 'MC'],
+                description: 'Blocket ad type (default: RECOMMERCE)',
+              },
+            },
+            required: ['platform', 'listing_id'],
+          },
+          description: 'Array of listings to fetch (max 20)',
+          maxItems: 20,
+        },
+      },
+      required: ['listings'],
+    },
+  },
+
+  // ============================================
   // COMPARISON TOOLS
   // ============================================
   {

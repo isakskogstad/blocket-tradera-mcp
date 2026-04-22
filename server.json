@@ -32,10 +32,6 @@
         "name": "npx",
         "args": ["-y", "blocket-tradera-mcp"]
       }
-    },
-    "remote": {
-      "type": "http",
-      "deploymentUrl": "https://blocket-tradera-mcp.onrender.com/mcp"
     }
   },
   "tools": [

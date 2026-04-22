@@ -4,24 +4,24 @@
  * Express server for Render deployment with MCP endpoint
  */
 
-import express, { Request, Response } from 'express';
-import { marked } from 'marked';
-import { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import express, { Request, Response } from "express";
+import { marked } from "marked";
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
-} from '@modelcontextprotocol/sdk/types.js';
+} from "@modelcontextprotocol/sdk/types.js";
 
-import { toolDefinitions } from './tools/tool-definitions.js';
-import { handleToolCall } from './tools/tool-handlers.js';
-import { getTraderaClient } from './clients/tradera-client.js';
+import { toolDefinitions } from "./tools/tool-definitions.js";
+import { handleToolCall } from "./tools/tool-handlers.js";
+import { getTraderaClient } from "./clients/tradera-client.js";
 
 const app = express();
 app.use(express.json());
 
-const PORT = parseInt(process.env.PORT ?? '10000', 10);
-const HOST = process.env.HOST ?? '0.0.0.0';
+const PORT = parseInt(process.env.PORT ?? "10000", 10);
+const HOST = process.env.HOST ?? "0.0.0.0";
 
 // ============================================
 // HOMEPAGE
@@ -89,7 +89,7 @@ Add to your \`claude_desktop_config.json\`:
   "mcpServers": {
     "blocket-tradera": {
       "type": "http",
-      "url": "${process.env.RENDER_EXTERNAL_URL ?? 'https://blocket-tradera-mcp.onrender.com'}/mcp"
+      "url": "http://localhost:3000/mcp"
     }
   }
 }
@@ -117,7 +117,7 @@ Add to your \`claude_desktop_config.json\`:
 *Developed by Isak Skogstad*
 `;
 
-app.get('/', (_req: Request, res: Response) => {
+app.get("/", (_req: Request, res: Response) => {
   const html = `
 <!DOCTYPE html>
 <html lang="en">
@@ -168,21 +168,21 @@ app.get('/', (_req: Request, res: Response) => {
 </body>
 </html>
   `;
-  res.type('html').send(html);
+  res.type("html").send(html);
 });
 
 // ============================================
 // HEALTH CHECK
 // ============================================
 
-app.get('/health', (_req: Request, res: Response) => {
+app.get("/health", (_req: Request, res: Response) => {
   const tradera = getTraderaClient();
   const budget = tradera.getBudget();
 
   res.json({
-    status: 'ok',
-    server: 'blocket-tradera-mcp',
-    version: '1.1.0',
+    status: "ok",
+    server: "blocket-tradera-mcp",
+    version: "1.1.0",
     tools_count: 10,
     tradera_api_budget: {
       remaining: budget.remaining,
@@ -201,14 +201,14 @@ app.get('/health', (_req: Request, res: Response) => {
 function createMCPServer(): Server {
   const server = new Server(
     {
-      name: 'blocket-tradera-mcp',
-      version: '1.1.0',
+      name: "blocket-tradera-mcp",
+      version: "1.1.0",
     },
     {
       capabilities: {
         tools: {},
       },
-    }
+    },
   );
 
   // List tools
@@ -222,7 +222,10 @@ function createMCPServer(): Server {
     console.error(`[MCP HTTP] Tool call: ${name}`);
 
     try {
-      const result = await handleToolCall(name, (args ?? {}) as Record<string, unknown>);
+      const result = await handleToolCall(
+        name,
+        (args ?? {}) as Record<string, unknown>,
+      );
       return {
         content: result.content,
         isError: result.isError,
@@ -232,9 +235,9 @@ function createMCPServer(): Server {
       return {
         content: [
           {
-            type: 'text' as const,
+            type: "text" as const,
             text: JSON.stringify({
-              error: error instanceof Error ? error.message : 'Unknown error',
+              error: error instanceof Error ? error.message : "Unknown error",
             }),
           },
         ],
@@ -247,27 +250,33 @@ function createMCPServer(): Server {
 }
 
 // Store active transports by session ID with last activity tracking
-const transports = new Map<string, {
-  transport: StreamableHTTPServerTransport;
-  lastActivity: number;
-}>();
+const transports = new Map<
+  string,
+  {
+    transport: StreamableHTTPServerTransport;
+    lastActivity: number;
+  }
+>();
 
 // Session cleanup interval (every 5 minutes, expire after 30 minutes)
 const SESSION_TIMEOUT_MS = 30 * 60 * 1000;
-setInterval(() => {
-  const now = Date.now();
-  for (const [sessionId, session] of transports.entries()) {
-    if (now - session.lastActivity > SESSION_TIMEOUT_MS) {
-      session.transport.close();
-      transports.delete(sessionId);
-      console.error(`[MCP HTTP] Session expired: ${sessionId}`);
+setInterval(
+  () => {
+    const now = Date.now();
+    for (const [sessionId, session] of transports.entries()) {
+      if (now - session.lastActivity > SESSION_TIMEOUT_MS) {
+        session.transport.close();
+        transports.delete(sessionId);
+        console.error(`[MCP HTTP] Session expired: ${sessionId}`);
+      }
     }
-  }
-}, 5 * 60 * 1000);
+  },
+  5 * 60 * 1000,
+);
 
 // MCP POST endpoint
-app.post('/mcp', async (req: Request, res: Response) => {
-  const sessionId = req.headers['mcp-session-id'] as string | undefined;
+app.post("/mcp", async (req: Request, res: Response) => {
+  const sessionId = req.headers["mcp-session-id"] as string | undefined;
 
   // Check for existing transport
   let session = sessionId ? transports.get(sessionId) : undefined;
@@ -296,17 +305,17 @@ app.post('/mcp', async (req: Request, res: Response) => {
 });
 
 // MCP GET endpoint for SSE (server-sent events)
-app.get('/mcp', async (req: Request, res: Response) => {
-  const sessionId = req.headers['mcp-session-id'] as string | undefined;
+app.get("/mcp", async (req: Request, res: Response) => {
+  const sessionId = req.headers["mcp-session-id"] as string | undefined;
 
   if (!sessionId) {
-    res.status(400).json({ error: 'Missing mcp-session-id header' });
+    res.status(400).json({ error: "Missing mcp-session-id header" });
     return;
   }
 
   const session = transports.get(sessionId);
   if (!session) {
-    res.status(404).json({ error: 'Session not found' });
+    res.status(404).json({ error: "Session not found" });
     return;
   }
 
@@ -315,11 +324,11 @@ app.get('/mcp', async (req: Request, res: Response) => {
 });
 
 // MCP DELETE endpoint for cleanup
-app.delete('/mcp', async (req: Request, res: Response) => {
-  const sessionId = req.headers['mcp-session-id'] as string | undefined;
+app.delete("/mcp", async (req: Request, res: Response) => {
+  const sessionId = req.headers["mcp-session-id"] as string | undefined;
 
   if (!sessionId) {
-    res.status(400).json({ error: 'Missing mcp-session-id header' });
+    res.status(400).json({ error: "Missing mcp-session-id header" });
     return;
   }
 

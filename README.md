@@ -20,7 +20,7 @@ MCP-server för svenska marknadsplatser Blocket och Tradera. Sök efter produkte
 
 ### Claude Desktop
 
-Lägg till i din `claude_desktop_config.json`:
+Installera via npm och lägg till i din `claude_desktop_config.json`:
 
 ```json
 {
@@ -33,33 +33,22 @@ Lägg till i din `claude_desktop_config.json`:
 }
 ```
 
-### Remote (HTTP Transport)
-
-```json
-{
-  "mcpServers": {
-    "blocket-tradera": {
-      "type": "http",
-      "url": "https://blocket-tradera-mcp.onrender.com/mcp"
-    }
-  }
-}
-```
+Paketet finns på npm: [`blocket-tradera-mcp`](https://www.npmjs.com/package/blocket-tradera-mcp).
 
 ## Tillgängliga verktyg
 
-| Verktyg | Beskrivning |
-|---------|-------------|
-| `marketplace_search` | Unified sökning på Blocket + Tradera |
-| `blocket_search` | Generell sökning på Blocket |
-| `blocket_search_cars` | Bilsökning med filter |
-| `blocket_search_boats` | Båtsökning |
-| `blocket_search_mc` | MC-sökning |
-| `tradera_search` | Auktionssökning (cachad) |
-| `get_listing_details` | Hämta full annonsinformation |
-| `compare_prices` | Jämför priser mellan plattformar |
-| `get_categories` | Lista kategorier |
-| `get_regions` | Lista svenska regioner |
+| Verktyg                | Beskrivning                          |
+| ---------------------- | ------------------------------------ |
+| `marketplace_search`   | Unified sökning på Blocket + Tradera |
+| `blocket_search`       | Generell sökning på Blocket          |
+| `blocket_search_cars`  | Bilsökning med filter                |
+| `blocket_search_boats` | Båtsökning                           |
+| `blocket_search_mc`    | MC-sökning                           |
+| `tradera_search`       | Auktionssökning (cachad)             |
+| `get_listing_details`  | Hämta full annonsinformation         |
+| `compare_prices`       | Jämför priser mellan plattformar     |
+| `get_categories`       | Lista kategorier                     |
+| `get_regions`          | Lista svenska regioner               |
 
 ## Exempel
 
@@ -85,24 +74,24 @@ Använd compare_prices för att jämföra priser på "iPhone 14" mellan Blocket 
 
 Sedan v1.1.0 använder servern Tradera REST API v3 som ger tillgång till fler fält:
 
-| Fält | Beskrivning |
-|------|-------------|
-| `nextBid` | Nästa budbelopp |
-| `bidCount` | Antal bud |
-| `sellerRating` | Säljarens DSR-betyg |
-| `sellerCity` | Säljarens stad |
-| `shippingOptions` | Fraktalternativ med priser |
-| `brand` | Märke (mobiler/elektronik) |
-| `model` | Modell |
-| `storage` | Lagringsutrymme |
-| `condition` | Skick (Oanvänd, Mycket gott skick, etc) |
+| Fält              | Beskrivning                             |
+| ----------------- | --------------------------------------- |
+| `nextBid`         | Nästa budbelopp                         |
+| `bidCount`        | Antal bud                               |
+| `sellerRating`    | Säljarens DSR-betyg                     |
+| `sellerCity`      | Säljarens stad                          |
+| `shippingOptions` | Fraktalternativ med priser              |
+| `brand`           | Märke (mobiler/elektronik)              |
+| `model`           | Modell                                  |
+| `storage`         | Lagringsutrymme                         |
+| `condition`       | Skick (Oanvänd, Mycket gott skick, etc) |
 
 ## Rate Limits
 
-| Plattform | Begränsning | Caching |
-|-----------|-------------|---------|
-| **Blocket** | 5 anrop/sekund | 5 min |
-| **Tradera** | 100 anrop/24h | 30 min |
+| Plattform   | Begränsning    | Caching |
+| ----------- | -------------- | ------- |
+| **Blocket** | 5 anrop/sekund | 5 min   |
+| **Tradera** | 100 anrop/24h  | 30 min  |
 
 Tradera har en mycket strikt begränsning på 100 API-anrop per dygn. Denna MCP-server implementerar aggressiv caching för att maximera användningen:
 

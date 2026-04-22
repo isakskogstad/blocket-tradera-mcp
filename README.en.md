@@ -20,7 +20,7 @@ MCP server for Swedish marketplaces Blocket and Tradera. Search for products, co
 
 ### Claude Desktop
 
-Add to your `claude_desktop_config.json`:
+Install via npm and add to your `claude_desktop_config.json`:
 
 ```json
 {
@@ -33,33 +33,22 @@ Add to your `claude_desktop_config.json`:
 }
 ```
 
-### Remote (HTTP Transport)
-
-```json
-{
-  "mcpServers": {
-    "blocket-tradera": {
-      "type": "http",
-      "url": "https://blocket-tradera-mcp.onrender.com/mcp"
-    }
-  }
-}
-```
+Package on npm: [`blocket-tradera-mcp`](https://www.npmjs.com/package/blocket-tradera-mcp).
 
 ## Available Tools
 
-| Tool | Description |
-|------|-------------|
-| `marketplace_search` | Unified search on Blocket + Tradera |
-| `blocket_search` | General search on Blocket |
-| `blocket_search_cars` | Car search with filters |
-| `blocket_search_boats` | Boat search |
-| `blocket_search_mc` | Motorcycle search |
-| `tradera_search` | Auction search (cached) |
-| `get_listing_details` | Get full listing details |
-| `compare_prices` | Compare prices between platforms |
-| `get_categories` | List categories |
-| `get_regions` | List Swedish regions |
+| Tool                   | Description                         |
+| ---------------------- | ----------------------------------- |
+| `marketplace_search`   | Unified search on Blocket + Tradera |
+| `blocket_search`       | General search on Blocket           |
+| `blocket_search_cars`  | Car search with filters             |
+| `blocket_search_boats` | Boat search                         |
+| `blocket_search_mc`    | Motorcycle search                   |
+| `tradera_search`       | Auction search (cached)             |
+| `get_listing_details`  | Get full listing details            |
+| `compare_prices`       | Compare prices between platforms    |
+| `get_categories`       | List categories                     |
+| `get_regions`          | List Swedish regions                |
 
 ## Examples
 
@@ -85,24 +74,24 @@ Use compare_prices to compare prices on "iPhone 14" between Blocket and Tradera
 
 Since v1.1.0, the server uses Tradera REST API v3 which provides access to more fields:
 
-| Field | Description |
-|-------|-------------|
-| `nextBid` | Next bid amount |
-| `bidCount` | Number of bids |
-| `sellerRating` | Seller's DSR rating |
-| `sellerCity` | Seller's city |
-| `shippingOptions` | Shipping options with prices |
-| `brand` | Brand (mobile/electronics) |
-| `model` | Model |
-| `storage` | Storage capacity |
-| `condition` | Condition (Unused, Very good, etc) |
+| Field             | Description                        |
+| ----------------- | ---------------------------------- |
+| `nextBid`         | Next bid amount                    |
+| `bidCount`        | Number of bids                     |
+| `sellerRating`    | Seller's DSR rating                |
+| `sellerCity`      | Seller's city                      |
+| `shippingOptions` | Shipping options with prices       |
+| `brand`           | Brand (mobile/electronics)         |
+| `model`           | Model                              |
+| `storage`         | Storage capacity                   |
+| `condition`       | Condition (Unused, Very good, etc) |
 
 ## Rate Limits
 
-| Platform | Limit | Caching |
-|----------|-------|---------|
-| **Blocket** | 5 requests/second | 5 min |
-| **Tradera** | 100 requests/24h | 30 min |
+| Platform    | Limit             | Caching |
+| ----------- | ----------------- | ------- |
+| **Blocket** | 5 requests/second | 5 min   |
+| **Tradera** | 100 requests/24h  | 30 min  |
 
 Tradera has a very strict limit of 100 API calls per day. This MCP server implements aggressive caching to maximize usage:
 
